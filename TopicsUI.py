@@ -1,58 +1,53 @@
-import os
-import time
-import re
-import threading
+# TopicsUI.py
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from datetime import datetime
 import queue
-import glob
-import shutil
+import threading
+import logging
 from dataclasses import dataclass
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from typing import Dict, List, Optional
 
-# Configuration
-CONFIG = {
-    "input_folder": r"C:\Users\kirill.levtov\Downloads\Special",
-    "output_folder": r"C:\Users\kirill.levtov\Downloads\Output",
-    "processed_folder": r"C:\Users\kirill.levtov\Downloads\Processed",
-    "file_pattern": "*.txt"
-}
-
-# Ensure folders exist
-for folder in [CONFIG["output_folder"], CONFIG["processed_folder"]]:
-    os.makedirs(folder, exist_ok=True)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("transcription.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Topic:
     text: str
     timestamp: datetime
+    source: str  # Either "ME" or "OTHERS"
     selected: bool = False
     
     def get_display_text(self):
-        return f"[{self.timestamp.strftime('%H:%M')}] {self.text}"
-
-class FileEventHandler(FileSystemEventHandler):
-    def __init__(self, callback):
-        self.callback = callback
-        
-    def on_created(self, event):
-        if not event.is_directory and event.src_path.endswith('.txt'):
-            self.callback(event.src_path)
+        source_tag = f"[{self.source}]"
+        return f"[{self.timestamp.strftime('%H:%M')}] {source_tag} {self.text}"
 
 class TopicProcessor:
-    def __init__(self, root):
+    def __init__(self, root, start_listening_callback, stop_listening_callback, submit_topics_callback):
         self.root = root
-        self.root.title("Topic Processor")
+        self.root.title("Audio Transcription Processor")
         self.root.geometry("900x600")
         self.topics = []
         self.topic_queue = queue.Queue()
-        self.create_widgets()
-        self.setup_file_watcher()
         
-        # Process existing files in the folder
-        self.process_existing_files()
+        # Callbacks for controlling microphone listening and submission
+        self.start_listening_callback = start_listening_callback
+        self.stop_listening_callback = stop_listening_callback
+        self.submit_topics_callback = submit_topics_callback
+        
+        # Create UI components
+        self.create_widgets()
+        
+        # Initialize listening state to OFF
+        self.listen_var.set(False)
         
         # Start the queue processing thread
         self.processing = True
@@ -82,7 +77,8 @@ class TopicProcessor:
         ttk.Button(button_frame, text="Delete All", command=lambda: self.delete_topics(selected_only=False)).pack(side=tk.LEFT, padx=5)
         
         # Listen toggle
-        self.listen_var = tk.BooleanVar(value=True)
+        self.listen_var = tk.BooleanVar(value=False)  # Start with listening OFF
+        self.listen_var.trace_add("write", self.toggle_listening)
         self.create_toggle_switch(button_frame, "Listen", self.listen_var).pack(side=tk.RIGHT, padx=5)
         
         # Topic listbox with scrollbar
@@ -165,92 +161,63 @@ class TopicProcessor:
         
         return frame
     
-    def setup_file_watcher(self):
-        self.observer = Observer()
-        self.observer.schedule(
-            FileEventHandler(self.topic_queue.put), 
-            CONFIG["input_folder"], 
-            recursive=False
-        )
-        self.observer.start()
-    
-    def process_existing_files(self):
-        for file_path in glob.glob(os.path.join(CONFIG["input_folder"], CONFIG["file_pattern"])):
-            self.topic_queue.put(file_path)
+    def toggle_listening(self, *args):
+        """Called when the listening toggle button is changed"""
+        if self.listen_var.get():
+            logger.info("Starting microphone listening")
+            self.start_listening_callback()
+        else:
+            logger.info("Stopping microphone listening")
+            self.stop_listening_callback()
     
     def process_queue(self):
+        """Process incoming transcripts from the queue"""
         while self.processing:
             try:
-                file_path = self.topic_queue.get(timeout=1)
-                if self.listen_var.get():  # Only process if listening
-                    self.process_file(file_path)
+                # Get the transcript from the queue
+                transcript_data = self.topic_queue.get(timeout=0.1)
+                
+                # Extract source and text from the transcript
+                source, text = self.parse_transcript(transcript_data)
+                
+                # Create a new topic and add it to the list
+                if text:
+                    self.add_topic(text, source)
+                
                 self.topic_queue.task_done()
             except queue.Empty:
-                time.sleep(0.1)
-    
-    def process_file(self, file_path):
-        for attempt in range(3):  # Max 3 retries
-            try:
-                # Get file creation time
-                timestamp = datetime.fromtimestamp(os.path.getctime(file_path))
-                
-                # Read file content with fallback encoding
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as file:
-                        content = file.read()
-                except UnicodeDecodeError:
-                    with open(file_path, 'r', encoding='cp1252') as file:
-                        content = file.read()
-                
-                # Process the file to extract the last chatbot response
-                last_response = self.extract_last_response(content)
-                if last_response:
-                    # Add each line as a topic
-                    for topic_text in [line.strip() for line in last_response.split('\n') if line.strip()]:
-                        self.topics.append(Topic(topic_text, timestamp))
-                
-                # Move the file to processed folder
-                basename = os.path.basename(file_path)
-                dest_path = os.path.join(CONFIG["processed_folder"], basename)
-                
-                # Add timestamp if file exists
-                if os.path.exists(dest_path):
-                    name, ext = os.path.splitext(basename)
-                    timestamp_str = datetime.now().strftime("%H%M%S")
-                    dest_path = os.path.join(CONFIG["processed_folder"], f"{name}_{timestamp_str}{ext}")
-                
-                shutil.move(file_path, dest_path)
-                return  # Success, exit the retry loop
-                
-            except PermissionError:
-                if attempt < 2:  # Don't sleep on the last attempt
-                    time.sleep(0.5 * (attempt + 1))  # Increasing delay
+                pass
             except Exception as e:
-                print(f"Error processing file {file_path}: {e}")
-                return  # Don't retry on non-permission errors
+                logger.error(f"Error processing transcript: {e}")
     
-    def extract_last_response(self, content):
-        # Find the last user prompt section
-        user_prompt_matches = re.findall(r"User prompt \d+ of \d+ - [^:]+:(.*?)(?=\n\nUser prompt|\Z)", content, re.DOTALL)
-        
-        if not user_prompt_matches:
-            return None
-            
-        # Get the last section and split it to separate prompt from response
-        last_section = user_prompt_matches[-1].strip()
-        parts = last_section.split("\n\n")
-        if len(parts) < 2:
-            return None
-        
-        # Everything after the first part should be the response
-        potential_response = "\n\n".join(parts[1:])
-        
-        # Extract just the model response by removing the model identifier
-        model_line_match = re.match(r"([A-Za-z][A-Za-z0-9\s\.-]+):(.*)", potential_response, re.DOTALL)
-        
-        return model_line_match.group(2).strip() if model_line_match else potential_response.strip()
-
+    def parse_transcript(self, transcript):
+        """Parse the transcript to extract source and text"""
+        try:
+            # Extract source tag and text
+            transcript = transcript.strip()
+            if transcript.startswith('[ME]'):
+                return 'ME', transcript[4:].strip()
+            elif transcript.startswith('[OTHERS]'):
+                return 'OTHERS', transcript[8:].strip()
+            else:
+                # Default to OTHERS if no source tag is found
+                return 'OTHERS', transcript
+        except Exception as e:
+            logger.error(f"Error parsing transcript: {e}")
+            return 'UNKNOWN', transcript
+    
+    def add_topic(self, text, source):
+        """Add a new topic to the list"""
+        topic = Topic(text=text, timestamp=datetime.now(), source=source)
+        self.topics.append(topic)
+        logger.info(f"Added new topic from {source}: {text[:50]}..." if len(text) > 50 else f"Added new topic: {text}")
+    
+    def add_transcript_to_queue(self, transcript):
+        """Add a transcript to the queue for processing"""
+        self.topic_queue.put(transcript)
+    
     def update_ui(self):
+        """Update the UI with the current topics"""
         # Save current scroll position
         yview = self.topic_listbox.yview()
         self.topic_listbox.delete(0, tk.END)
@@ -273,6 +240,7 @@ class TopicProcessor:
         self.root.after(100, self.update_ui)
     
     def toggle_selection(self, event):
+        """Toggle the selection state of a topic when clicked"""
         try:
             idx = self.topic_listbox.nearest(event.y)
             if 0 <= idx < len(self.topics):
@@ -283,6 +251,7 @@ class TopicProcessor:
             pass
     
     def update_full_text_display(self, idx):
+        """Update the full text display with the selected topic"""
         if 0 <= idx < len(self.topics):
             self.full_text.config(state="normal")
             self.full_text.delete(1.0, tk.END)
@@ -290,6 +259,7 @@ class TopicProcessor:
             self.full_text.config(state="disabled")
     
     def select_topics(self, select_all=True):
+        """Select or deselect all topics"""
         for topic in self.topics:
             topic.selected = select_all
         
@@ -299,6 +269,7 @@ class TopicProcessor:
             self.topic_listbox.selection_clear(0, tk.END)
     
     def delete_topics(self, selected_only=True):
+        """Delete selected topics or all topics"""
         if selected_only:
             self.topics = [topic for topic in self.topics if not topic.selected]
         else:
@@ -306,6 +277,7 @@ class TopicProcessor:
         self.topic_listbox.selection_clear(0, tk.END)
     
     def delete_topic(self, event):
+        """Delete a single topic on right-click"""
         try:
             idx = self.topic_listbox.nearest(event.y)
             if 0 <= idx < len(self.topics):
@@ -315,6 +287,7 @@ class TopicProcessor:
             pass
     
     def show_full_topic(self, event):
+        """Show the full text of the selected topic"""
         if event:
             try:
                 selected_indices = self.topic_listbox.curselection()
@@ -324,39 +297,34 @@ class TopicProcessor:
                 pass
     
     def submit_topics(self):
+        """Submit selected topics to the browser queue"""
         context = self.context_text.get(1.0, tk.END).strip()
         selected_topics = [topic for topic in self.topics if topic.selected]
         
         if selected_topics:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = os.path.join(CONFIG["output_folder"], f"topics_{timestamp}.txt")
+            # Format the message to send to the browser
+            messages = []
             
-            try:
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    if context:
-                        f.write(f"CONTEXT:\n{context}\n\n")
-                    
-                    f.write("TOPICS:\n")
-                    for i, topic in enumerate(selected_topics):
-                        f.write(f"{i+1}. [{topic.timestamp.strftime('%H:%M')}] {topic.text}\n")
-                
-                # Clean up after successful submission
-                self.topics = [topic for topic in self.topics if not topic.selected]
-                self.topic_listbox.selection_clear(0, tk.END)
-            except Exception as e:
-                print(f"Error writing to output file: {e}")
+            # Add context if present
+            if context:
+                messages.append(f"[CONTEXT] {context}")
+            
+            # Add selected topics with their source tags
+            for topic in selected_topics:
+                messages.append(f"[{topic.source}] {topic.text}")
+            
+            combined_message = "\n".join(messages)
+            logger.info(f"Submitting {len(selected_topics)} topics to browser")
+            
+            # Call the callback function to submit to browser
+            self.submit_topics_callback(combined_message)
+            
+            # Clear selections after successful submission
+            self.topics = [topic for topic in self.topics if not topic.selected]
+            self.topic_listbox.selection_clear(0, tk.END)
     
     def on_closing(self):
+        """Handle application closing"""
         self.processing = False
-        self.observer.stop()
-        self.observer.join()
+        self.stop_listening_callback()
         self.root.destroy()
-
-def main():
-    root = tk.Tk()
-    app = TopicProcessor(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()

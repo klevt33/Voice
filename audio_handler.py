@@ -117,6 +117,11 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
     # Main recording loop
     try:
         while run_threads_ref["active"]:
+            # Check if listening is enabled
+            if not run_threads_ref.get("listening", True):
+                time.sleep(0.1)  # Sleep briefly when not listening
+                continue
+                
             # Wait for sound to begin
             logger.debug(f"Waiting for sound on {source} microphone...")
             
@@ -125,7 +130,7 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
             sound_detected = False
             
             # Wait for consistent sound before starting recording
-            while run_threads_ref["active"] and not sound_detected:
+            while run_threads_ref["active"] and run_threads_ref.get("listening", True) and not sound_detected:
                 try:
                     data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
                     level = get_audio_level(data)
@@ -147,14 +152,14 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                         logger.error(f"Error reading from {source} stream: {e}")
                         time.sleep(1)
                 
-                if not run_threads_ref["active"]:
+                if not run_threads_ref["active"] or not run_threads_ref.get("listening", True):
                     break
             
             # Record until silence is consistently detected
             silence_counter = 0
             consecutive_silence_required = FRAMES_PER_BUFFER  # Number of silent frames required to stop recording
             
-            while mic["recording"] and run_threads_ref["active"]:
+            while mic["recording"] and run_threads_ref["active"] and run_threads_ref.get("listening", True):
                 try:
                     data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
                     mic["frames"].append(data)
@@ -173,9 +178,15 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                     if run_threads_ref["active"]:
                         logger.error(f"Error during {source} recording: {e}")
             
+            # Check if listening has been turned off
+            if not run_threads_ref.get("listening", True) and mic["recording"]:
+                logger.info(f"Listening turned off while recording from {source}. Stopping recording.")
+                mic["recording"] = False
+            
             # Process the recording if we have data
             if mic["frames"] and len(mic["frames"]) > 0:
-                process_recording(mic["frames"], source, audio, audio_queue)
+                if run_threads_ref.get("listening", True):
+                    process_recording(mic["frames"], source, audio, audio_queue)
                 mic["frames"] = []
     
     finally:

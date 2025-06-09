@@ -31,10 +31,9 @@ def get_whisper_model(model_name: str, device: str, compute_type: str) -> Whispe
         logger.info(f"Using cached WhisperModel instance: {model_name}")
     return _model_cache[cache_key]
 
-# Updated transcription thread function in transcription.py
 def transcription_thread(audio_queue: queue.Queue, 
                          run_threads_ref: Dict[str, bool], 
-                         browser_queue: queue.Queue) -> None:  # Changed parameter
+                         ui_queue: queue.Queue) -> None:  # Change to ui_queue
     """Thread that processes audio segments and converts speech to text using faster_whisper"""
     logger.info(f"Initializing faster_whisper ({WHISPER_MODEL} model)...")
     
@@ -118,12 +117,12 @@ def transcription_thread(audio_queue: queue.Queue,
                         if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10: # Likely fast_whisper hallucination...
                             logger.info(f"TRANSCRIBED (Not Sent): {cleaned_text}")
                         else:
-                            full_transcript = f" {source_prefix} {cleaned_text}"
+                            full_transcript = f"{source_prefix} {cleaned_text}"
                             # Print the partial transcript with source prefix
                             logger.info(f"TRANSCRIBED (Sent): {full_transcript[:48]}..." if len(full_transcript) > 48 else f"TRANSCRIBED (Sent): {full_transcript}")
                             
-                            # Add to browser queue
-                            browser_queue.put(full_transcript)
+                            # Add to UI queue instead of browser queue
+                            ui_queue.put(full_transcript)
                 
                 audio_queue.task_done()
                 processing_time = time.time() - start_time

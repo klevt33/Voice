@@ -27,8 +27,6 @@ LANGUAGE = "en"        # Set to English only
 BEAM_SIZE = 5          # Beam size for faster-whisper
 
 # Chat configuration
-MIN_CONTENT_LENGTH = 300  # Submit if the queue is empty
-MAX_CONTENT_LENGTH = 600  # Submit even if there are more messages in the queue
 CHAT = "Perplexity"    # Default chat to use
 DEBUGGER_ADDRESS = "localhost:9222"  # Debugging address for Chrome
 
@@ -41,7 +39,9 @@ CHATS = {
     "Perplexity": {
         "url": "https://perplexity.ai/",
         "css_selector": "textarea[placeholder^='Ask']",
-        "prompt_file": "pprompt.txt"
+        "prompt_init_file": "prompt_init.txt",  # New: Initial prompt file
+        "prompt_msg_file": "prompt_msg.txt"     # New: Message prompt file
+        # "prompt_file": "pprompt.txt" # Old: Remove or comment out
     }
 }
 

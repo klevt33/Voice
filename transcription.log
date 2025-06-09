@@ -18890,3 +18890,754 @@ Stacktrace:
 2025-04-27 19:52:07,232 - transcription - INFO - Cleaning up transcription resources
 2025-04-27 19:52:07,320 - transcription - INFO - Transcription thread shutting down.
 2025-04-27 19:52:07,321 - __main__ - INFO - Exiting application
+2025-04-28 11:24:25,350 - TopicsUI - INFO - Stopping microphone listening
+2025-04-28 11:24:25,351 - __main__ - INFO - Stopping microphone listening
+2025-04-28 11:24:25,626 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-04-28 11:24:27,782 - browser - INFO - Successfully connected to Chrome (session: d7ea2844314e27f5a2195080c0da296e)
+2025-04-28 11:24:27,782 - __main__ - INFO - Chrome session id: d7ea2844314e27f5a2195080c0da296e
+2025-04-28 11:24:27,783 - browser - INFO - Loaded prompt from pprompt.txt (522 chars)
+2025-04-28 11:24:27,783 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-04-28 11:24:32,983 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-04-28 11:24:32,985 - audio_handler - INFO - Starting recording thread for ME
+2025-04-28 11:24:32,985 - __main__ - INFO - Started thread: RecorderMe
+2025-04-28 11:24:32,986 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-04-28 11:24:32,987 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-04-28 11:24:32,987 - __main__ - INFO - Started thread: RecorderOthers
+2025-04-28 11:24:32,987 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-04-28 11:24:32,988 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-04-28 11:24:32,990 - __main__ - INFO - Started thread: Transcriber
+2025-04-28 11:24:32,990 - transcription - INFO - Using device: cuda
+2025-04-28 11:24:32,991 - browser - INFO - Starting browser communication thread
+2025-04-28 11:24:32,991 - __main__ - INFO - Started thread: BrowserCommunication
+2025-04-28 11:24:32,991 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-04-28 11:24:32,991 - browser - INFO - Preparing prompt instructions
+2025-04-28 11:24:32,992 - __main__ - INFO - All threads started
+2025-04-28 11:24:32,994 - __main__ - INFO - Starting main UI loop
+2025-04-28 11:24:33,036 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-04-28 11:24:33,036 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-04-28 11:24:33,050 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-04-28 11:24:33,050 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-04-28 11:24:34,581 - browser - INFO - Prompt instructions sent
+2025-04-28 11:24:37,203 - transcription - INFO - faster_whisper model loaded successfully
+2025-04-28 11:24:37,203 - transcription - INFO - Speech recognition thread ready.
+2025-04-28 11:25:03,865 - TopicsUI - INFO - Starting microphone listening
+2025-04-28 11:25:03,865 - __main__ - INFO - Starting microphone listening
+2025-04-28 11:25:16,841 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:25:24,431 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:25:24,432 - audio_handler - INFO - Processing new audio segment from ME (328 frames)
+2025-04-28 11:25:24,433 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:25:24,542 - faster_whisper - INFO - Processing audio with duration 00:07.616
+2025-04-28 11:25:27,112 - transcription - INFO - TRANSCRIBED (Sent): [ME] Tell me about the migration process for Dyn...
+2025-04-28 11:25:27,168 - TopicsUI - INFO - Added new topic from ME: Tell me about the migration process for Dynamics 3...
+2025-04-28 11:25:42,668 - TopicsUI - INFO - Submitting 1 topics to browser
+2025-04-28 11:25:42,668 - __main__ - INFO - Submitting topics to browser: [ME] Tell me about the migration process for Dynam...
+2025-04-28 11:25:42,668 - browser - INFO - RECEIVED FOR BROWSER: [ME] Tell me about the migration process for Dyn...
+2025-04-28 11:25:57,852 - browser - WARNING - Stale element reference, retrying...
+2025-04-28 11:26:04,033 - browser - ERROR - UI element not found: Message: 
+Stacktrace:
+	GetHandleVerifier [0x00007FF7B890EFA5+77893]
+	GetHandleVerifier [0x00007FF7B890F000+77984]
+	(No symbol) [0x00007FF7B86D91BA]
+	(No symbol) [0x00007FF7B872F16D]
+	(No symbol) [0x00007FF7B872F41C]
+	(No symbol) [0x00007FF7B8782237]
+	(No symbol) [0x00007FF7B875716F]
+	(No symbol) [0x00007FF7B877F07F]
+	(No symbol) [0x00007FF7B8756F03]
+	(No symbol) [0x00007FF7B8720328]
+	(No symbol) [0x00007FF7B8721093]
+	GetHandleVerifier [0x00007FF7B8BC7B6D+2931725]
+	GetHandleVerifier [0x00007FF7B8BC2132+2908626]
+	GetHandleVerifier [0x00007FF7B8BE00F3+3031443]
+	GetHandleVerifier [0x00007FF7B89291EA+184970]
+	GetHandleVerifier [0x00007FF7B893086F+215311]
+	GetHandleVerifier [0x00007FF7B8916EC4+110436]
+	GetHandleVerifier [0x00007FF7B8917072+110866]
+	GetHandleVerifier [0x00007FF7B88FD479+5401]
+	BaseThreadInitThunk [0x00007FFAEB32E8D7+23]
+	RtlUserThreadStart [0x00007FFAEC3114FC+44]
+
+2025-04-28 11:26:04,034 - browser - ERROR - Failed to send and submit message
+2025-04-28 11:26:18,041 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:26:19,992 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:26:19,993 - audio_handler - INFO - Processing new audio segment from ME (85 frames)
+2025-04-28 11:26:19,993 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:26:20,061 - faster_whisper - INFO - Processing audio with duration 00:01.974
+2025-04-28 11:26:20,723 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-04-28 11:26:22,391 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:26:23,410 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:26:23,411 - audio_handler - INFO - Processing new audio segment from ME (45 frames)
+2025-04-28 11:26:23,412 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:26:23,476 - faster_whisper - INFO - Processing audio with duration 00:01.045
+2025-04-28 11:26:24,072 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-04-28 11:27:54,100 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:27:55,101 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:27:55,101 - audio_handler - INFO - Processing new audio segment from ME (44 frames)
+2025-04-28 11:27:55,101 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:27:55,173 - faster_whisper - INFO - Processing audio with duration 00:01.022
+2025-04-28 11:27:55,667 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-04-28 11:28:18,950 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:28:29,310 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:28:29,310 - audio_handler - INFO - Processing new audio segment from ME (447 frames)
+2025-04-28 11:28:29,311 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:28:29,384 - faster_whisper - INFO - Processing audio with duration 00:10.379
+2025-04-28 11:28:30,220 - transcription - INFO - TRANSCRIBED (Sent): [ME] Explain the differences between Azure Monit...
+2025-04-28 11:28:30,292 - TopicsUI - INFO - Added new topic from ME: Explain the differences between Azure Monitor and ...
+2025-04-28 11:28:39,152 - TopicsUI - INFO - Submitting 1 topics to browser
+2025-04-28 11:28:39,153 - __main__ - INFO - Submitting topics to browser: [ME] Explain the differences between Azure Monitor...
+2025-04-28 11:28:39,154 - browser - INFO - RECEIVED FOR BROWSER: [ME] Explain the differences between Azure Monit...
+2025-04-28 11:28:53,412 - browser - WARNING - Stale element reference, retrying...
+2025-04-28 11:29:02,280 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:29:04,040 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:29:04,040 - audio_handler - INFO - Processing new audio segment from ME (77 frames)
+2025-04-28 11:29:04,040 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:29:04,106 - faster_whisper - INFO - Processing audio with duration 00:01.788
+2025-04-28 11:29:04,680 - transcription - INFO - TRANSCRIBED (Not Sent): Thanks for watching.  Bye.
+2025-04-28 11:29:08,550 - browser - INFO - Submitting the prompt
+2025-04-28 11:29:08,786 - browser - INFO - Message batch submitted successfully
+2025-04-28 11:29:08,788 - browser - INFO - Preparing prompt instructions
+2025-04-28 11:29:08,828 - browser - INFO - Prompt input field is not empty. Prompt instructions not sent.
+2025-04-28 11:30:43,799 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:30:48,879 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:30:48,881 - audio_handler - INFO - Processing new audio segment from ME (220 frames)
+2025-04-28 11:30:48,881 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:30:48,948 - faster_whisper - INFO - Processing audio with duration 00:05.108
+2025-04-28 11:30:49,629 - transcription - INFO - TRANSCRIBED (Sent): [ME] Explain the difference between Azure Monito...
+2025-04-28 11:30:49,696 - TopicsUI - INFO - Added new topic: Explain the difference between Azure Monitor.
+2025-04-28 11:30:51,549 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:31:01,049 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:31:01,050 - audio_handler - INFO - Processing new audio segment from ME (410 frames)
+2025-04-28 11:31:01,050 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:31:01,124 - faster_whisper - INFO - Processing audio with duration 00:09.520
+2025-04-28 11:31:01,882 - transcription - INFO - TRANSCRIBED (Sent): [ME] Explain the difference between Azure Monito...
+2025-04-28 11:31:01,928 - TopicsUI - INFO - Added new topic from ME: Explain the difference between Azure Monitor  and ...
+2025-04-28 11:31:10,270 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-04-28 11:31:11,259 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-04-28 11:31:11,260 - audio_handler - INFO - Processing new audio segment from ME (44 frames)
+2025-04-28 11:31:11,260 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-04-28 11:31:11,326 - faster_whisper - INFO - Processing audio with duration 00:01.022
+2025-04-28 11:31:11,997 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-04-28 11:31:17,030 - TopicsUI - INFO - Submitting 1 topics to browser
+2025-04-28 11:31:17,030 - __main__ - INFO - Submitting topics to browser: [ME] Explain the difference between Azure Monitor ...
+2025-04-28 11:31:17,030 - browser - INFO - RECEIVED FOR BROWSER: [ME] Explain the difference between Azure Monito...
+2025-04-28 11:31:29,815 - browser - INFO - Submitting the prompt
+2025-04-28 11:31:30,048 - browser - INFO - Message batch submitted successfully
+2025-04-28 11:31:30,048 - browser - INFO - Preparing prompt instructions
+2025-04-28 11:31:30,531 - browser - INFO - Prompt input field is not empty. Prompt instructions not sent.
+2025-04-28 11:32:02,220 - TopicsUI - INFO - Stopping microphone listening
+2025-04-28 11:32:02,220 - __main__ - INFO - Stopping microphone listening
+2025-04-28 11:57:56,884 - __main__ - INFO - Window closing, shutting down application...
+2025-04-28 11:57:56,886 - __main__ - INFO - Shutdown signal received. Cleaning up...
+2025-04-28 11:57:56,917 - __main__ - INFO - Waiting for threads to finish...
+2025-04-28 11:57:56,987 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-04-28 11:57:56,988 - audio_handler - INFO - Cleaning up ME recording thread
+2025-04-28 11:57:56,989 - audio_handler - ERROR - Error closing OTHERS stream: Stream not open
+2025-04-28 11:57:56,990 - audio_handler - ERROR - Error closing ME stream: Stream not open
+2025-04-28 11:57:57,588 - browser - INFO - Browser communication stats: sent 2 messages with 2 submissions, 1 failures, success rate: 66.7%
+2025-04-28 11:57:57,589 - browser - INFO - Browser communication thread shutting down.
+2025-04-28 11:57:57,696 - transcription - INFO - Transcription stats: processed 9 segments, 0 empty, 0 errors, avg time: 0.94s per segment
+2025-04-28 11:57:57,697 - transcription - INFO - Cleaning up transcription resources
+2025-04-28 11:57:57,811 - transcription - INFO - Transcription thread shutting down.
+2025-04-28 11:57:57,811 - __main__ - INFO - Application shutdown complete
+2025-06-08 19:13:58,255 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 19:13:58,256 - __main__ - INFO - Stopping microphone listening
+2025-06-08 19:13:58,782 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 19:14:03,340 - browser - INFO - Successfully connected to Chrome (session: e900d8c9d166c94397155bf4e849ba4b)
+2025-06-08 19:14:03,341 - __main__ - INFO - Chrome session id: e900d8c9d166c94397155bf4e849ba4b
+2025-06-08 19:14:03,342 - browser - INFO - Loaded prompt from pprompt.txt (522 chars)
+2025-06-08 19:14:03,343 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 19:14:07,910 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 19:14:07,911 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 19:14:07,911 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 19:14:07,912 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 19:14:07,913 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 19:14:07,913 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 19:14:07,913 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 19:14:07,914 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 19:14:07,916 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 19:14:07,916 - transcription - INFO - Using device: cuda
+2025-06-08 19:14:07,917 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 19:14:07,918 - browser - INFO - Starting browser communication thread
+2025-06-08 19:14:07,918 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 19:14:07,919 - browser - INFO - Preparing prompt instructions
+2025-06-08 19:14:07,920 - __main__ - INFO - All threads started
+2025-06-08 19:14:07,920 - __main__ - INFO - Starting main UI loop
+2025-06-08 19:14:08,100 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 19:14:08,101 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 19:14:08,122 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 19:14:08,123 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 19:14:10,102 - browser - INFO - Prompt instructions sent
+2025-06-08 19:14:12,236 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 19:14:12,237 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 19:17:03,898 - __main__ - INFO - Window closing, shutting down application...
+2025-06-08 19:17:03,899 - __main__ - INFO - Shutdown signal received. Cleaning up...
+2025-06-08 19:17:03,911 - __main__ - INFO - Waiting for threads to finish...
+2025-06-08 19:17:03,926 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 19:17:03,933 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 19:17:03,933 - audio_handler - ERROR - Error closing ME stream: Stream not open
+2025-06-08 19:17:03,938 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 19:17:03,938 - audio_handler - ERROR - Error closing OTHERS stream: Stream not open
+2025-06-08 19:17:04,560 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 19:17:04,607 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 19:17:04,608 - __main__ - INFO - Application shutdown complete
+2025-06-08 19:23:22,808 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 19:23:22,809 - __main__ - INFO - Stopping microphone listening
+2025-06-08 19:23:23,098 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 19:23:25,147 - browser - INFO - Successfully connected to Chrome (session: 78219f1a6bc7b192f5abd066760ef4e4)
+2025-06-08 19:23:25,148 - __main__ - INFO - Chrome session id: 78219f1a6bc7b192f5abd066760ef4e4
+2025-06-08 19:23:25,148 - browser - INFO - Loaded prompt from pprompt.txt (522 chars)
+2025-06-08 19:23:25,148 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 19:23:36,074 - browser - ERROR - Timeout waiting for chat UI elements to load
+2025-06-08 19:23:36,075 - __main__ - ERROR - Failed to initialize chat
+2025-06-08 19:23:36,076 - __main__ - ERROR - Failed to initialize browser. Exiting.
+2025-06-08 19:24:09,266 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 19:24:09,266 - __main__ - INFO - Stopping microphone listening
+2025-06-08 19:24:09,528 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 19:24:11,446 - browser - INFO - Successfully connected to Chrome (session: 25112632f9fea465f6a85f2bdf9f3858)
+2025-06-08 19:24:11,447 - __main__ - INFO - Chrome session id: 25112632f9fea465f6a85f2bdf9f3858
+2025-06-08 19:24:11,447 - browser - INFO - Loaded prompt from pprompt.txt (522 chars)
+2025-06-08 19:24:11,448 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 19:24:12,058 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 19:24:12,061 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 19:24:12,061 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 19:24:12,062 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 19:24:12,064 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 19:24:12,064 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 19:24:12,065 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 19:24:12,067 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 19:24:12,069 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 19:24:12,069 - transcription - INFO - Using device: cuda
+2025-06-08 19:24:12,069 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 19:24:12,070 - browser - INFO - Starting browser communication thread
+2025-06-08 19:24:12,070 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 19:24:12,071 - browser - INFO - Preparing prompt instructions
+2025-06-08 19:24:12,071 - __main__ - INFO - All threads started
+2025-06-08 19:24:12,072 - __main__ - INFO - Starting main UI loop
+2025-06-08 19:24:12,112 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 19:24:12,113 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 19:24:12,126 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 19:24:12,126 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 19:24:15,796 - browser - INFO - Prompt instructions sent
+2025-06-08 19:24:16,191 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 19:24:16,191 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 19:25:35,420 - TopicsUI - INFO - Starting microphone listening
+2025-06-08 19:25:35,420 - __main__ - INFO - Starting microphone listening
+2025-06-08 19:25:38,552 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:25:46,362 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:25:46,363 - audio_handler - INFO - Processing new audio segment from ME (337 frames)
+2025-06-08 19:25:46,363 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:25:46,506 - faster_whisper - INFO - Processing audio with duration 00:07.825
+2025-06-08 19:26:32,084 - transcription - INFO - TRANSCRIBED (Sent): [ME] Let's find some information about Dynamics ...
+2025-06-08 19:26:32,173 - TopicsUI - INFO - Added new topic from ME: Let's find some information about Dynamics 365 plu...
+2025-06-08 19:26:55,851 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:27:01,172 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:27:01,172 - audio_handler - INFO - Processing new audio segment from ME (230 frames)
+2025-06-08 19:27:01,173 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:27:01,250 - faster_whisper - INFO - Processing audio with duration 00:05.341
+2025-06-08 19:27:01,967 - transcription - INFO - TRANSCRIBED (Sent): [ME] We will also discuss the usage of JavaScrip...
+2025-06-08 19:27:02,035 - TopicsUI - INFO - Added new topic from ME: We will also discuss the usage of JavaScript to cu...
+2025-06-08 19:27:16,152 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:27:21,742 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:27:21,742 - audio_handler - INFO - Processing new audio segment from ME (242 frames)
+2025-06-08 19:27:21,742 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:27:21,823 - faster_whisper - INFO - Processing audio with duration 00:05.619
+2025-06-08 19:27:22,592 - transcription - INFO - TRANSCRIBED (Sent): [ME] Lastly, we will talk about low-code options...
+2025-06-08 19:27:22,688 - TopicsUI - INFO - Added new topic from ME: Lastly, we will talk about low-code options,  such...
+2025-06-08 19:27:59,272 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:28:00,681 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:28:00,681 - audio_handler - INFO - Processing new audio segment from ME (62 frames)
+2025-06-08 19:28:00,681 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:28:00,753 - faster_whisper - INFO - Processing audio with duration 00:01.440
+2025-06-08 19:28:01,405 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-06-08 19:30:10,302 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:30:11,481 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:30:11,481 - audio_handler - INFO - Processing new audio segment from ME (52 frames)
+2025-06-08 19:30:11,481 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:30:11,551 - faster_whisper - INFO - Processing audio with duration 00:01.207
+2025-06-08 19:30:12,185 - transcription - INFO - [ME] No speech detected.
+2025-06-08 19:30:13,411 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:30:14,431 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:30:14,432 - audio_handler - INFO - Processing new audio segment from ME (45 frames)
+2025-06-08 19:30:14,432 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:30:14,499 - faster_whisper - INFO - Processing audio with duration 00:01.045
+2025-06-08 19:30:15,089 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-06-08 19:30:58,782 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:31:00,471 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:31:00,471 - audio_handler - INFO - Processing new audio segment from ME (74 frames)
+2025-06-08 19:31:00,472 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:31:00,542 - faster_whisper - INFO - Processing audio with duration 00:01.718
+2025-06-08 19:31:01,174 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-06-08 19:32:07,581 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:32:08,651 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:32:08,651 - audio_handler - INFO - Processing new audio segment from ME (47 frames)
+2025-06-08 19:32:08,651 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:32:08,717 - faster_whisper - INFO - Processing audio with duration 00:01.091
+2025-06-08 19:32:09,349 - transcription - INFO - TRANSCRIBED (Not Sent): Thanks for watching!
+2025-06-08 19:32:50,796 - TopicsUI - INFO - Submitting 1 topics to browser
+2025-06-08 19:32:50,796 - __main__ - INFO - Submitting topics to browser: [ME] Let's find some information about Dynamics 36...
+2025-06-08 19:32:50,796 - browser - INFO - RECEIVED FOR BROWSER: [ME] Let's find some information about Dynamics ...
+2025-06-08 19:32:55,484 - browser - WARNING - Stale element reference, retrying...
+2025-06-08 19:33:01,272 - browser - INFO - Submitting the prompt
+2025-06-08 19:33:01,535 - browser - INFO - Message batch submitted successfully
+2025-06-08 19:33:01,535 - browser - INFO - Preparing prompt instructions
+2025-06-08 19:33:01,675 - browser - INFO - Prompt input field is not empty. Prompt instructions not sent.
+2025-06-08 19:36:32,749 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:36:33,769 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:36:33,769 - audio_handler - INFO - Processing new audio segment from ME (45 frames)
+2025-06-08 19:36:33,771 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:36:33,847 - faster_whisper - INFO - Processing audio with duration 00:01.045
+2025-06-08 19:36:34,469 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-06-08 19:42:31,357 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:42:32,918 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:42:32,918 - audio_handler - INFO - Processing new audio segment from ME (68 frames)
+2025-06-08 19:42:32,919 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:42:33,004 - faster_whisper - INFO - Processing audio with duration 00:01.579
+2025-06-08 19:42:33,602 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.  Thank you.
+2025-06-08 19:43:58,987 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:44:00,057 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:44:00,058 - audio_handler - INFO - Processing new audio segment from ME (47 frames)
+2025-06-08 19:44:00,058 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:44:00,130 - faster_whisper - INFO - Processing audio with duration 00:01.091
+2025-06-08 19:44:00,740 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-06-08 19:47:22,657 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:47:24,697 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:47:24,697 - audio_handler - INFO - Processing new audio segment from ME (89 frames)
+2025-06-08 19:47:24,698 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:47:24,784 - faster_whisper - INFO - Processing audio with duration 00:02.067
+2025-06-08 19:47:26,481 - transcription - INFO - TRANSCRIBED (Sent): [ME] Any other questions?  No.  Okay.  Thank you...
+2025-06-08 19:47:26,514 - TopicsUI - INFO - Added new topic from ME: Any other questions?  No.  Okay.  Thank you.  I'm ...
+2025-06-08 19:54:51,603 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:54:52,604 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:54:52,605 - audio_handler - INFO - Processing new audio segment from ME (44 frames)
+2025-06-08 19:54:52,605 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:54:52,696 - faster_whisper - INFO - Processing audio with duration 00:01.022
+2025-06-08 19:54:53,202 - transcription - INFO - TRANSCRIBED (Not Sent): Thanks for watching!
+2025-06-08 19:58:03,617 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:58:04,637 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:58:04,638 - audio_handler - INFO - Processing new audio segment from ME (45 frames)
+2025-06-08 19:58:04,639 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:58:04,716 - faster_whisper - INFO - Processing audio with duration 00:01.045
+2025-06-08 19:58:05,213 - transcription - INFO - TRANSCRIBED (Not Sent): Thank you.
+2025-06-08 19:58:36,127 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 19:58:37,817 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 19:58:37,817 - audio_handler - INFO - Processing new audio segment from ME (74 frames)
+2025-06-08 19:58:37,817 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 19:58:37,889 - faster_whisper - INFO - Processing audio with duration 00:01.718
+2025-06-08 19:58:38,402 - transcription - INFO - TRANSCRIBED (Not Sent): Thanks for watching!
+2025-06-08 20:10:16,016 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 20:10:16,016 - __main__ - INFO - Stopping microphone listening
+2025-06-08 20:10:30,515 - __main__ - INFO - Window closing, shutting down application...
+2025-06-08 20:10:30,516 - __main__ - INFO - Shutdown signal received. Cleaning up...
+2025-06-08 20:10:30,546 - __main__ - INFO - Waiting for threads to finish...
+2025-06-08 20:10:30,594 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 20:10:30,594 - audio_handler - ERROR - Error closing OTHERS stream: Stream not open
+2025-06-08 20:10:30,612 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 20:10:30,612 - audio_handler - ERROR - Error closing ME stream: Stream not open
+2025-06-08 20:10:30,747 - browser - INFO - Browser communication stats: sent 1 messages with 1 submissions, 0 failures, success rate: 100.0%
+2025-06-08 20:10:30,749 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 20:10:31,274 - transcription - INFO - Transcription stats: processed 15 segments, 1 empty, 0 errors, avg time: 3.76s per segment
+2025-06-08 20:10:31,275 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 20:10:31,327 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 20:10:31,328 - __main__ - INFO - Application shutdown complete
+2025-06-08 20:35:37,933 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 20:35:37,934 - __main__ - INFO - Stopping microphone listening
+2025-06-08 20:35:38,339 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 20:35:40,833 - browser - INFO - Successfully connected to Chrome (session: d806834238d393f6526424ed6117f1cf)
+2025-06-08 20:35:40,834 - __main__ - INFO - Chrome session id: d806834238d393f6526424ed6117f1cf
+2025-06-08 20:35:40,835 - browser - INFO - Loaded initial prompt from prompt_init.txt (539 chars)
+2025-06-08 20:35:40,835 - browser - ERROR - Error: Message prompt file 'prompt_msg.txt' not found for Perplexity
+2025-06-08 20:35:40,835 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 20:35:45,021 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 20:35:45,022 - browser - INFO - Sending initial prompt to the chat...
+2025-06-08 20:35:47,259 - browser - INFO - Submitting the prompt
+2025-06-08 20:35:57,839 - browser - ERROR - UI element not found or timeout: Message: 
+
+2025-06-08 20:35:57,840 - browser - ERROR - Failed to send/submit initial prompt.
+2025-06-08 20:35:57,842 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 20:35:57,842 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 20:35:57,842 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 20:35:57,844 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 20:35:57,844 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 20:35:57,845 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 20:35:57,845 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 20:35:57,845 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 20:35:57,846 - transcription - INFO - Using device: cuda
+2025-06-08 20:35:57,846 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 20:35:57,847 - browser - INFO - Starting browser communication thread
+2025-06-08 20:35:57,847 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 20:35:57,847 - __main__ - INFO - All threads started
+2025-06-08 20:35:57,848 - __main__ - INFO - Starting main UI loop
+2025-06-08 20:35:57,924 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 20:35:57,925 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 20:35:57,935 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 20:35:57,935 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 20:36:01,799 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 20:36:01,800 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 20:36:42,040 - __main__ - INFO - Window closing event triggered. Initiating shutdown...
+2025-06-08 20:36:42,041 - __main__ - INFO - Shutdown process started. Cleaning up resources...
+2025-06-08 20:36:42,041 - __main__ - INFO - Waiting for threads to terminate...
+2025-06-08 20:36:42,041 - __main__ - INFO - Threads still active before join: ['RecorderMe', 'RecorderOthers', 'Transcriber', 'BrowserCommunication']
+2025-06-08 20:36:42,041 - __main__ - INFO - Attempting to join thread: RecorderMe
+2025-06-08 20:36:42,084 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 20:36:42,085 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 20:36:42,090 - __main__ - INFO - Thread RecorderMe joined successfully.
+2025-06-08 20:36:42,090 - __main__ - INFO - Attempting to join thread: RecorderOthers
+2025-06-08 20:36:42,094 - __main__ - INFO - Thread RecorderOthers joined successfully.
+2025-06-08 20:36:42,095 - __main__ - INFO - Attempting to join thread: Transcriber
+2025-06-08 20:36:42,123 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 20:36:42,186 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 20:36:42,187 - __main__ - INFO - Thread Transcriber joined successfully.
+2025-06-08 20:36:42,187 - __main__ - INFO - Attempting to join thread: BrowserCommunication
+2025-06-08 20:36:42,201 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 20:36:42,201 - __main__ - INFO - Thread BrowserCommunication joined successfully.
+2025-06-08 20:36:42,201 - __main__ - INFO - All threads joined or timed out.
+2025-06-08 20:36:42,202 - __main__ - INFO - Post-thread join: Mic ME stream object exists.
+2025-06-08 20:36:42,202 - __main__ - INFO - Post-thread join: Mic OTHERS stream object exists.
+2025-06-08 20:36:42,202 - __main__ - INFO - Terminating PyAudio...
+2025-06-08 20:36:42,203 - __main__ - INFO - PyAudio terminated successfully.
+2025-06-08 20:36:42,203 - __main__ - INFO - Application shutdown cleanup finished.
+2025-06-08 20:36:42,293 - __main__ - INFO - Tkinter root window destroyed.
+2025-06-08 20:36:42,294 - __main__ - INFO - Application will now exit.
+2025-06-08 20:36:42,294 - __main__ - INFO - Main UI loop exited.
+2025-06-08 20:36:42,294 - __main__ - INFO - Shutdown already in progress or completed.
+2025-06-08 20:36:42,295 - __main__ - INFO - Application run method finished.
+2025-06-08 20:38:06,611 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 20:38:06,612 - __main__ - INFO - Stopping microphone listening
+2025-06-08 20:38:07,539 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 20:38:09,623 - browser - INFO - Successfully connected to Chrome (session: 066be885b8e6cdbb49264f573e6e4031)
+2025-06-08 20:38:09,623 - __main__ - INFO - Chrome session id: 066be885b8e6cdbb49264f573e6e4031
+2025-06-08 20:38:09,625 - browser - INFO - Loaded initial prompt from prompt_init.txt (539 chars)
+2025-06-08 20:38:09,627 - browser - INFO - Loaded message prompt from prompt_msg.txt (83 chars)
+2025-06-08 20:38:09,628 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 20:38:10,566 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 20:38:10,566 - browser - INFO - Sending initial prompt to the chat...
+2025-06-08 20:38:13,663 - browser - INFO - Submitting the prompt
+2025-06-08 20:38:14,185 - browser - INFO - Chat submitted and input field ready for next interaction.
+2025-06-08 20:38:14,186 - browser - INFO - Initial prompt submitted successfully.
+2025-06-08 20:38:14,190 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 20:38:14,190 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 20:38:14,191 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 20:38:14,194 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 20:38:14,194 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 20:38:14,195 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 20:38:14,196 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 20:38:14,197 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 20:38:14,197 - transcription - INFO - Using device: cuda
+2025-06-08 20:38:14,198 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 20:38:14,199 - browser - INFO - Starting browser communication thread
+2025-06-08 20:38:14,200 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 20:38:14,202 - __main__ - INFO - All threads started
+2025-06-08 20:38:14,203 - __main__ - INFO - Starting main UI loop
+2025-06-08 20:38:14,251 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 20:38:14,252 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 20:38:14,269 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 20:38:14,270 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 20:38:18,001 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 20:38:18,001 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 20:38:36,903 - TopicsUI - INFO - Starting microphone listening
+2025-06-08 20:38:36,903 - __main__ - INFO - Starting microphone listening
+2025-06-08 20:38:39,069 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 20:38:44,720 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 20:38:44,720 - audio_handler - INFO - Processing new audio segment from ME (244 frames)
+2025-06-08 20:38:44,720 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 20:38:44,851 - faster_whisper - INFO - Processing audio with duration 00:05.666
+2025-06-08 20:39:06,142 - transcription - INFO - TRANSCRIBED (Sent): [ME] What are the best practices in development ...
+2025-06-08 20:39:06,220 - TopicsUI - INFO - Added new topic from ME: What are the best practices in development of Dyna...
+2025-06-08 20:39:24,749 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 20:39:29,489 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 20:39:29,489 - audio_handler - INFO - Processing new audio segment from ME (205 frames)
+2025-06-08 20:39:29,490 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 20:39:29,561 - faster_whisper - INFO - Processing audio with duration 00:04.760
+2025-06-08 20:39:30,312 - transcription - INFO - TRANSCRIBED (Sent): [ME] What are the alternatives to JavaScript for...
+2025-06-08 20:39:30,393 - TopicsUI - INFO - Added new topic from ME: What are the alternatives to JavaScript for UI cus...
+2025-06-08 20:39:47,866 - TopicsUI - INFO - Submitting 2 topics to browser
+2025-06-08 20:39:47,866 - __main__ - INFO - Submitting topics to browser queue: [ME] What are the best practices in development of...
+2025-06-08 20:39:47,866 - browser - INFO - RECEIVED FOR BROWSER: [ME] What are the best practices in development of Dynamics ...
+2025-06-08 20:39:47,867 - browser - INFO - Preparing to send to chat: Review the conversation fragment(s) below, using previous interactions for context:
+[ME] What are th...
+2025-06-08 20:39:49,836 - browser - INFO - Submitting the prompt
+2025-06-08 20:39:50,139 - browser - INFO - Chat submitted and input field ready for next interaction.
+2025-06-08 20:39:50,140 - browser - INFO - Message batch submitted successfully to browser.
+2025-06-08 20:45:40,549 - __main__ - INFO - Window closing event triggered. Initiating shutdown...
+2025-06-08 20:45:40,550 - __main__ - INFO - Shutdown process started. Cleaning up resources...
+2025-06-08 20:45:40,550 - __main__ - INFO - Waiting for threads to terminate...
+2025-06-08 20:45:40,551 - __main__ - INFO - Threads still active before join: ['RecorderMe', 'RecorderOthers', 'Transcriber', 'BrowserCommunication']
+2025-06-08 20:45:40,551 - __main__ - INFO - Attempting to join thread: RecorderMe
+2025-06-08 20:45:40,559 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 20:45:40,563 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 20:45:40,580 - __main__ - INFO - Thread RecorderMe joined successfully.
+2025-06-08 20:45:40,581 - __main__ - INFO - Attempting to join thread: RecorderOthers
+2025-06-08 20:45:40,590 - __main__ - INFO - Thread RecorderOthers joined successfully.
+2025-06-08 20:45:40,592 - __main__ - INFO - Attempting to join thread: Transcriber
+2025-06-08 20:45:40,937 - browser - INFO - Browser communication stats: 1 messages sent (1 submissions), 0 failures. Success rate: 100.0%
+2025-06-08 20:45:40,938 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 20:45:41,294 - transcription - INFO - Transcription stats: processed 2 segments, 0 empty, 0 errors, avg time: 11.12s per segment
+2025-06-08 20:45:41,295 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 20:45:41,410 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 20:45:41,412 - __main__ - INFO - Thread Transcriber joined successfully.
+2025-06-08 20:45:41,412 - __main__ - INFO - Thread BrowserCommunication was already finished.
+2025-06-08 20:45:41,412 - __main__ - INFO - All threads joined or timed out.
+2025-06-08 20:45:41,413 - __main__ - INFO - Post-thread join: Mic ME stream object exists.
+2025-06-08 20:45:41,413 - __main__ - INFO - Post-thread join: Mic OTHERS stream object exists.
+2025-06-08 20:45:41,414 - __main__ - INFO - Terminating PyAudio...
+2025-06-08 20:45:41,416 - __main__ - INFO - PyAudio terminated successfully.
+2025-06-08 20:45:41,417 - __main__ - INFO - Application shutdown cleanup finished.
+2025-06-08 20:45:41,501 - __main__ - INFO - Tkinter root window destroyed.
+2025-06-08 20:45:41,501 - __main__ - INFO - Application will now exit.
+2025-06-08 20:45:41,501 - __main__ - INFO - Main UI loop exited.
+2025-06-08 20:45:41,502 - __main__ - INFO - Shutdown already in progress or completed.
+2025-06-08 20:45:41,502 - __main__ - INFO - Application run method finished.
+2025-06-08 20:57:01,601 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 20:57:01,603 - __main__ - INFO - Stopping microphone listening
+2025-06-08 20:57:02,605 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 20:57:04,841 - browser - INFO - Successfully connected to Chrome (session: 45d338625a54d6a8935d86784f2e2446)
+2025-06-08 20:57:04,842 - __main__ - INFO - Chrome session id: 45d338625a54d6a8935d86784f2e2446
+2025-06-08 20:57:04,843 - browser - INFO - Loaded initial prompt from prompt_init.txt (539 chars)
+2025-06-08 20:57:04,845 - browser - INFO - Loaded message prompt from prompt_msg.txt (83 chars)
+2025-06-08 20:57:04,845 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 20:57:05,784 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 20:57:05,784 - browser - INFO - Sending initial prompt to the chat...
+2025-06-08 20:57:16,575 - browser - WARNING - Timeout: Textarea value did not match expected content after sending keys. Expected len: 539, Got len: 678. Expected start: 'You are a professional assistant specializing in Microsoft Solutions Architectur...', Got start: '[ME] What are the best practices in development of Dynamics 365 plugins?[ME] Wha...'. Submission might be unreliable or act on partial text.
+2025-06-08 20:57:16,576 - browser - INFO - Submitting the prompt via ENTER key.
+2025-06-08 20:57:16,938 - browser - INFO - Chat submitted and Perplexity appears to be processing or input field is clear.
+2025-06-08 20:57:16,939 - browser - INFO - Initial prompt submitted successfully.
+2025-06-08 20:57:16,941 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 20:57:16,941 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 20:57:16,942 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 20:57:16,944 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 20:57:16,944 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 20:57:16,944 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 20:57:16,947 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 20:57:16,948 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 20:57:16,948 - transcription - INFO - Using device: cuda
+2025-06-08 20:57:16,949 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 20:57:16,950 - browser - INFO - Starting browser communication thread
+2025-06-08 20:57:16,950 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 20:57:16,951 - __main__ - INFO - All threads started
+2025-06-08 20:57:16,952 - __main__ - INFO - Starting main UI loop
+2025-06-08 20:57:17,017 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 20:57:17,017 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 20:57:17,030 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 20:57:17,031 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 20:57:21,303 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 20:57:21,311 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 20:58:57,551 - TopicsUI - INFO - Starting microphone listening
+2025-06-08 20:58:57,552 - __main__ - INFO - Starting microphone listening
+2025-06-08 20:59:00,665 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 20:59:06,986 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 20:59:06,986 - audio_handler - INFO - Processing new audio segment from ME (273 frames)
+2025-06-08 20:59:06,988 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 20:59:07,199 - faster_whisper - INFO - Processing audio with duration 00:06.339
+2025-06-08 20:59:28,429 - transcription - INFO - TRANSCRIBED (Sent): [ME] using a custom action as opposed to JavaScr...
+2025-06-08 20:59:28,518 - TopicsUI - INFO - Added new topic from ME: using a custom action as opposed to JavaScript con...
+2025-06-08 21:00:08,615 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 21:00:13,326 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 21:00:13,326 - audio_handler - INFO - Processing new audio segment from ME (204 frames)
+2025-06-08 21:00:13,326 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 21:00:13,407 - faster_whisper - INFO - Processing audio with duration 00:04.737
+2025-06-08 21:00:13,933 - transcription - INFO - TRANSCRIBED (Sent): [ME] What is the modern alternative to synchrono...
+2025-06-08 21:00:13,941 - TopicsUI - INFO - Added new topic from ME: What is the modern alternative to synchronous work...
+2025-06-08 21:00:26,579 - TopicsUI - INFO - Submitting 2 topics to browser
+2025-06-08 21:00:26,579 - __main__ - INFO - Submitting topics to browser queue: [ME] using a custom action as opposed to JavaScrip...
+2025-06-08 21:00:26,579 - browser - INFO - RECEIVED FOR BROWSER: [ME] using a custom action as opposed to JavaScript consider...
+2025-06-08 21:00:26,580 - browser - INFO - Preparing to send to chat (length: 225): Review the conversation fragment(s) below, using previous interactions for context: [ME] using a cus...
+2025-06-08 21:00:35,633 - browser - WARNING - Timeout: Textarea value did not match expected content after sending keys. Expected len: 225, Got len: 61. Expected start: 'Review the conversation fragment(s) below, using previous interactions for conte...', Got start: '[ME] What is the modern alternative to synchronous workflows?...'. Submission might be unreliable or act on partial text.
+2025-06-08 21:00:35,633 - browser - INFO - Submitting the prompt via ENTER key.
+2025-06-08 21:00:35,803 - browser - INFO - Chat submitted and Perplexity appears to be processing or input field is clear.
+2025-06-08 21:00:35,804 - browser - INFO - Message batch submitted successfully to browser.
+2025-06-08 21:05:28,051 - __main__ - INFO - Window closing event triggered. Initiating shutdown...
+2025-06-08 21:05:28,052 - __main__ - INFO - Shutdown process started. Cleaning up resources...
+2025-06-08 21:05:28,052 - __main__ - INFO - Waiting for threads to terminate...
+2025-06-08 21:05:28,053 - __main__ - INFO - Threads still active before join: ['RecorderMe', 'RecorderOthers', 'Transcriber', 'BrowserCommunication']
+2025-06-08 21:05:28,053 - __main__ - INFO - Attempting to join thread: RecorderMe
+2025-06-08 21:05:28,074 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 21:05:28,079 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 21:05:28,106 - __main__ - INFO - Thread RecorderMe joined successfully.
+2025-06-08 21:05:28,107 - __main__ - INFO - Thread RecorderOthers was already finished.
+2025-06-08 21:05:28,107 - __main__ - INFO - Attempting to join thread: Transcriber
+2025-06-08 21:05:28,362 - transcription - INFO - Transcription stats: processed 2 segments, 0 empty, 0 errors, avg time: 11.02s per segment
+2025-06-08 21:05:28,363 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 21:05:28,524 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 21:05:28,525 - __main__ - INFO - Thread Transcriber joined successfully.
+2025-06-08 21:05:28,525 - __main__ - INFO - Attempting to join thread: BrowserCommunication
+2025-06-08 21:05:29,043 - browser - INFO - Browser communication stats: 1 messages sent (1 submissions), 0 failures. Success rate: 100.0%
+2025-06-08 21:05:29,044 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 21:05:29,044 - __main__ - INFO - Thread BrowserCommunication joined successfully.
+2025-06-08 21:05:29,045 - __main__ - INFO - All threads joined or timed out.
+2025-06-08 21:05:29,045 - __main__ - INFO - Post-thread join: Mic ME stream object exists.
+2025-06-08 21:05:29,046 - __main__ - INFO - Post-thread join: Mic OTHERS stream object exists.
+2025-06-08 21:05:29,047 - __main__ - INFO - Terminating PyAudio...
+2025-06-08 21:05:29,050 - __main__ - INFO - PyAudio terminated successfully.
+2025-06-08 21:05:29,051 - __main__ - INFO - Application shutdown cleanup finished.
+2025-06-08 21:05:29,168 - __main__ - INFO - Tkinter root window destroyed.
+2025-06-08 21:05:29,169 - __main__ - INFO - Application will now exit.
+2025-06-08 21:05:29,169 - __main__ - INFO - Main UI loop exited.
+2025-06-08 21:05:29,170 - __main__ - INFO - Shutdown already in progress or completed.
+2025-06-08 21:05:29,170 - __main__ - INFO - Application run method finished.
+2025-06-08 21:11:34,776 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 21:11:34,777 - __main__ - INFO - Stopping microphone listening
+2025-06-08 21:11:35,153 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 21:11:37,316 - browser - INFO - Successfully connected to Chrome (session: f4f0757d61ce0a7b3baf4c899e55b402)
+2025-06-08 21:11:37,316 - __main__ - INFO - Chrome session id: f4f0757d61ce0a7b3baf4c899e55b402
+2025-06-08 21:11:37,317 - browser - INFO - Loaded initial prompt from prompt_init.txt (539 chars)
+2025-06-08 21:11:37,317 - browser - INFO - Loaded message prompt from prompt_msg.txt (83 chars)
+2025-06-08 21:11:37,318 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 21:11:40,087 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 21:11:40,087 - browser - INFO - Sending initial prompt to the chat...
+2025-06-08 21:11:40,595 - browser - INFO - Textarea value matches expected content after JS set.
+2025-06-08 21:11:40,652 - browser - INFO - Submitting the prompt via ENTER key.
+2025-06-08 21:11:40,783 - browser - INFO - Chat submitted and Perplexity appears to be processing or input field is clear.
+2025-06-08 21:11:40,784 - browser - INFO - Initial prompt submitted successfully.
+2025-06-08 21:11:40,786 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 21:11:40,786 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 21:11:40,786 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 21:11:40,787 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 21:11:40,787 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 21:11:40,788 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 21:11:40,788 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 21:11:40,789 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 21:11:40,789 - transcription - INFO - Using device: cuda
+2025-06-08 21:11:40,789 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 21:11:40,790 - browser - INFO - Starting browser communication thread
+2025-06-08 21:11:40,790 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 21:11:40,790 - __main__ - INFO - All threads started
+2025-06-08 21:11:40,790 - __main__ - INFO - Starting main UI loop
+2025-06-08 21:11:40,863 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 21:11:40,863 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 21:11:40,874 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 21:11:40,874 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 21:11:45,555 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 21:11:45,555 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 21:11:51,534 - TopicsUI - INFO - Starting microphone listening
+2025-06-08 21:11:51,535 - __main__ - INFO - Starting microphone listening
+2025-06-08 21:11:59,987 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 21:12:04,047 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 21:12:04,047 - audio_handler - INFO - Processing new audio segment from ME (176 frames)
+2025-06-08 21:12:04,047 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 21:12:04,184 - faster_whisper - INFO - Processing audio with duration 00:04.087
+2025-06-08 21:12:25,362 - transcription - INFO - TRANSCRIBED (Sent): [ME] What are the latest advancements in Microso...
+2025-06-08 21:12:25,386 - TopicsUI - INFO - Added new topic from ME: What are the latest advancements in Microsoft Powe...
+2025-06-08 21:12:31,689 - TopicsUI - INFO - Submitting 1 topics to browser
+2025-06-08 21:12:31,690 - __main__ - INFO - Submitting topics to browser queue: [ME] What are the latest advancements in Microsoft...
+2025-06-08 21:12:31,690 - browser - INFO - RECEIVED FOR BROWSER: [ME] What are the latest advancements in Microsoft Power Pla...
+2025-06-08 21:12:31,690 - browser - INFO - Preparing to send to chat (length: 150): Review the conversation fragment(s) below, using previous interactions for context: [ME] What are th...
+2025-06-08 21:12:31,867 - browser - INFO - Textarea value matches expected content after JS set.
+2025-06-08 21:12:31,897 - browser - INFO - Submitting the prompt via ENTER key.
+2025-06-08 21:12:31,974 - browser - INFO - Chat submitted and Perplexity appears to be processing or input field is clear.
+2025-06-08 21:12:31,975 - browser - INFO - Message batch submitted successfully to browser.
+2025-06-08 21:12:46,903 - __main__ - INFO - Window closing event triggered. Initiating shutdown...
+2025-06-08 21:12:46,904 - __main__ - INFO - Shutdown process started. Cleaning up resources...
+2025-06-08 21:12:46,904 - __main__ - INFO - Waiting for threads to terminate...
+2025-06-08 21:12:46,904 - __main__ - INFO - Threads still active before join: ['RecorderMe', 'RecorderOthers', 'Transcriber', 'BrowserCommunication']
+2025-06-08 21:12:46,904 - __main__ - INFO - Attempting to join thread: RecorderMe
+2025-06-08 21:12:46,917 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 21:12:46,919 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 21:12:46,936 - __main__ - INFO - Thread RecorderMe joined successfully.
+2025-06-08 21:12:46,936 - __main__ - INFO - Thread RecorderOthers was already finished.
+2025-06-08 21:12:46,937 - __main__ - INFO - Attempting to join thread: Transcriber
+2025-06-08 21:12:47,095 - browser - INFO - Browser communication stats: 1 messages sent (1 submissions), 0 failures. Success rate: 100.0%
+2025-06-08 21:12:47,095 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 21:12:47,529 - transcription - INFO - Transcription stats: processed 1 segments, 0 empty, 0 errors, avg time: 21.32s per segment
+2025-06-08 21:12:47,529 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 21:12:47,575 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 21:12:47,576 - __main__ - INFO - Thread Transcriber joined successfully.
+2025-06-08 21:12:47,576 - __main__ - INFO - Thread BrowserCommunication was already finished.
+2025-06-08 21:12:47,576 - __main__ - INFO - All threads joined or timed out.
+2025-06-08 21:12:47,576 - __main__ - INFO - Post-thread join: Mic ME stream object exists.
+2025-06-08 21:12:47,576 - __main__ - INFO - Post-thread join: Mic OTHERS stream object exists.
+2025-06-08 21:12:47,577 - __main__ - INFO - Terminating PyAudio...
+2025-06-08 21:12:47,579 - __main__ - INFO - PyAudio terminated successfully.
+2025-06-08 21:12:47,579 - __main__ - INFO - Application shutdown cleanup finished.
+2025-06-08 21:12:47,634 - __main__ - INFO - Tkinter root window destroyed.
+2025-06-08 21:12:47,635 - __main__ - INFO - Application will now exit.
+2025-06-08 21:12:47,635 - __main__ - INFO - Main UI loop exited.
+2025-06-08 21:12:47,635 - __main__ - INFO - Shutdown already in progress or completed.
+2025-06-08 21:12:47,635 - __main__ - INFO - Application run method finished.
+2025-06-08 21:23:08,619 - TopicsUI - INFO - Stopping microphone listening
+2025-06-08 21:23:08,622 - __main__ - INFO - Stopping microphone listening
+2025-06-08 21:23:09,550 - browser - INFO - Connecting to Chrome at localhost:9222
+2025-06-08 21:23:11,512 - browser - INFO - Successfully connected to Chrome (session: 58373f7ea651a49dc4b7b65b71971393)
+2025-06-08 21:23:11,513 - __main__ - INFO - Chrome session id: 58373f7ea651a49dc4b7b65b71971393
+2025-06-08 21:23:11,514 - browser - INFO - Loaded initial prompt from prompt_init.txt (539 chars)
+2025-06-08 21:23:11,515 - browser - INFO - Loaded message prompt from prompt_msg.txt (83 chars)
+2025-06-08 21:23:11,516 - browser - INFO - Opening URL: https://perplexity.ai/
+2025-06-08 21:23:12,504 - browser - INFO - Successfully opened new chat at https://perplexity.ai/
+2025-06-08 21:23:12,504 - browser - INFO - Sending initial prompt to the chat via clipboard method...
+2025-06-08 21:23:12,860 - browser - INFO - Content (len: 539) copied to clipboard.
+2025-06-08 21:23:13,724 - browser - INFO - Textarea value matches expected content after paste.
+2025-06-08 21:23:13,725 - browser - INFO - Submitting the prompt via ENTER key.
+2025-06-08 21:23:14,037 - browser - INFO - Chat submitted and Perplexity appears to be processing or input field is clear.
+2025-06-08 21:23:14,037 - browser - INFO - Initial prompt submitted successfully.
+2025-06-08 21:23:14,040 - audio_handler - INFO - Starting recording thread for ME
+2025-06-08 21:23:14,040 - __main__ - INFO - Started thread: RecorderMe
+2025-06-08 21:23:14,041 - audio_handler - INFO - Using ME microphone: Headset Microphone (Plantronics (index 1)
+2025-06-08 21:23:14,043 - audio_handler - INFO - Starting recording thread for OTHERS
+2025-06-08 21:23:14,043 - __main__ - INFO - Started thread: RecorderOthers
+2025-06-08 21:23:14,043 - audio_handler - INFO - Using OTHERS microphone: Voicemeeter Out B1 (VB-Audio Vo (index 8)
+2025-06-08 21:23:14,044 - transcription - INFO - Initializing faster_whisper (medium model)...
+2025-06-08 21:23:14,045 - __main__ - INFO - Started thread: Transcriber
+2025-06-08 21:23:14,045 - transcription - INFO - Using device: cuda
+2025-06-08 21:23:14,046 - transcription - INFO - Creating new WhisperModel instance: medium on cuda
+2025-06-08 21:23:14,047 - browser - INFO - Starting browser communication thread
+2025-06-08 21:23:14,047 - __main__ - INFO - Started thread: BrowserCommunication
+2025-06-08 21:23:14,047 - __main__ - INFO - All threads started
+2025-06-08 21:23:14,048 - __main__ - INFO - Starting main UI loop
+2025-06-08 21:23:14,104 - audio_handler - INFO - Ready to record from ME microphone. Listening for sound...
+2025-06-08 21:23:14,105 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 21:23:14,123 - audio_handler - INFO - Ready to record from OTHERS microphone. Listening for sound...
+2025-06-08 21:23:14,124 - audio_handler - INFO - Using silence threshold: 100, silence duration: 1.0s (43 frames)
+2025-06-08 21:23:17,817 - transcription - INFO - faster_whisper model loaded successfully
+2025-06-08 21:23:17,817 - transcription - INFO - Speech recognition thread ready.
+2025-06-08 21:23:45,662 - TopicsUI - INFO - Starting microphone listening
+2025-06-08 21:23:45,662 - __main__ - INFO - Starting microphone listening
+2025-06-08 21:23:53,656 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 21:23:58,117 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 21:23:58,117 - audio_handler - INFO - Processing new audio segment from ME (193 frames)
+2025-06-08 21:23:58,117 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 21:23:58,240 - faster_whisper - INFO - Processing audio with duration 00:04.481
+2025-06-08 21:24:13,957 - audio_handler - INFO - Sound detected on ME microphone. Recording started.
+2025-06-08 21:24:19,534 - transcription - INFO - TRANSCRIBED (Sent): [ME] What are the latest enhancements in Microso...
+2025-06-08 21:24:19,638 - TopicsUI - INFO - Added new topic from ME: What are the latest enhancements in Microsoft Powe...
+2025-06-08 21:24:20,827 - audio_handler - INFO - Silence detected on ME microphone for 1.0s. Recording stopped.
+2025-06-08 21:24:20,827 - audio_handler - INFO - Processing new audio segment from ME (297 frames)
+2025-06-08 21:24:20,828 - audio_handler - INFO - Audio segment from ME queued for transcription
+2025-06-08 21:24:20,905 - faster_whisper - INFO - Processing audio with duration 00:06.896
+2025-06-08 21:24:21,314 - transcription - INFO - TRANSCRIBED (Sent): [ME] What's the modern alternatives to synchrono...
+2025-06-08 21:24:21,372 - TopicsUI - INFO - Added new topic from ME: What's the modern alternatives to synchronous work...
+2025-06-08 21:24:31,102 - TopicsUI - INFO - Submitting 2 topics to browser
+2025-06-08 21:24:31,103 - __main__ - INFO - Submitting topics to browser queue: [ME] What are the latest enhancements in Microsoft...
+2025-06-08 21:24:31,103 - browser - INFO - RECEIVED FOR BROWSER: [ME] What are the latest enhancements in Microsoft Power Pla...
+2025-06-08 21:24:31,103 - browser - INFO - Preparing to send to chat (length: 228): Review the conversation fragment(s) below, using previous interactions for context: [ME] What are th...
+2025-06-08 21:24:31,301 - browser - INFO - Content (len: 228) copied to clipboard.
+2025-06-08 21:24:32,189 - browser - INFO - Textarea value matches expected content after paste.
+2025-06-08 21:24:32,190 - browser - INFO - Submitting the prompt via ENTER key.
+2025-06-08 21:24:32,367 - browser - INFO - Chat submitted and Perplexity appears to be processing or input field is clear.
+2025-06-08 21:24:32,368 - browser - INFO - Message batch submitted successfully to browser.
+2025-06-08 21:25:33,178 - __main__ - INFO - Window closing event triggered. Initiating shutdown...
+2025-06-08 21:25:33,179 - __main__ - INFO - Shutdown process started. Cleaning up resources...
+2025-06-08 21:25:33,179 - __main__ - INFO - Waiting for threads to terminate...
+2025-06-08 21:25:33,179 - __main__ - INFO - Threads still active before join: ['RecorderMe', 'RecorderOthers', 'Transcriber', 'BrowserCommunication']
+2025-06-08 21:25:33,179 - __main__ - INFO - Attempting to join thread: RecorderMe
+2025-06-08 21:25:33,207 - audio_handler - INFO - Cleaning up ME recording thread
+2025-06-08 21:25:33,208 - audio_handler - INFO - Cleaning up OTHERS recording thread
+2025-06-08 21:25:33,238 - __main__ - INFO - Thread RecorderMe joined successfully.
+2025-06-08 21:25:33,238 - __main__ - INFO - Thread RecorderOthers was already finished.
+2025-06-08 21:25:33,239 - __main__ - INFO - Attempting to join thread: Transcriber
+2025-06-08 21:25:33,841 - browser - INFO - Browser communication stats: 1 messages sent (1 submissions), 0 failures. Success rate: 100.0%
+2025-06-08 21:25:33,842 - browser - INFO - Browser communication thread shutting down.
+2025-06-08 21:25:33,872 - transcription - INFO - Transcription stats: processed 2 segments, 0 empty, 0 errors, avg time: 10.95s per segment
+2025-06-08 21:25:33,873 - transcription - INFO - Cleaning up transcription resources
+2025-06-08 21:25:33,924 - transcription - INFO - Transcription thread shutting down.
+2025-06-08 21:25:33,925 - __main__ - INFO - Thread Transcriber joined successfully.
+2025-06-08 21:25:33,925 - __main__ - INFO - Thread BrowserCommunication was already finished.
+2025-06-08 21:25:33,926 - __main__ - INFO - All threads joined or timed out.
+2025-06-08 21:25:33,926 - __main__ - INFO - Post-thread join: Mic ME stream object exists.
+2025-06-08 21:25:33,926 - __main__ - INFO - Post-thread join: Mic OTHERS stream object exists.
+2025-06-08 21:25:33,926 - __main__ - INFO - Terminating PyAudio...
+2025-06-08 21:25:33,928 - __main__ - INFO - PyAudio terminated successfully.
+2025-06-08 21:25:33,928 - __main__ - INFO - Application shutdown cleanup finished.
+2025-06-08 21:25:33,988 - __main__ - INFO - Tkinter root window destroyed.
+2025-06-08 21:25:33,988 - __main__ - INFO - Application will now exit.
+2025-06-08 21:25:33,989 - __main__ - INFO - Main UI loop exited.
+2025-06-08 21:25:33,989 - __main__ - INFO - Shutdown already in progress or completed.
+2025-06-08 21:25:33,989 - __main__ - INFO - Application run method finished.
