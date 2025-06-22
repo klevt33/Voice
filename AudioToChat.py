@@ -128,9 +128,9 @@ class AudioToChat:
             if thread.is_alive():
                 try:
                     logger.info(f"Attempting to join thread: {thread.name}")
-                    thread.join(timeout=5) # Increased timeout for graceful shutdown
+                    thread.join(timeout=10) # Increased timeout for graceful shutdown
                     if thread.is_alive():
-                        logger.warning(f"Thread {thread.name} did not terminate after 5 seconds.")
+                        logger.warning(f"Thread {thread.name} did not terminate after 10 seconds.")
                     else:
                         logger.info(f"Thread {thread.name} joined successfully.")
                 except Exception as e:

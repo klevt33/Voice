@@ -37,11 +37,18 @@ SCREENSHOT_FOLDER = r"C:\Users\kirill.levtov\OneDrive - Perficient, Inc\Pictures
 # Chat service configurations
 CHATS = {
     "Perplexity": {
-        "url": "https://perplexity.ai/",
-        "css_selector": "textarea[placeholder^='Ask']",
-        "prompt_init_file": "prompt_init.txt",  # New: Initial prompt file
-        "prompt_msg_file": "prompt_msg.txt"     # New: Message prompt file
-        # "prompt_file": "pprompt.txt" # Old: Remove or comment out
+        "url": "https://www.perplexity.ai/",
+        "prompt_init_file": "prompt_init.txt",
+        "prompt_msg_file": "prompt_msg.txt",
+        "css_selector_input": "[id='ask-input']",
+        "submit_button_selector": "button[aria-label='Submit']",
+        # Corrected selector for Attach Files button
+        "attach_files_button_selector": "button[aria-label='Attach files']",
+        "file_input_selector_after_attach": "input[type='file']",
+        # Add selector for the "New Thread" button (can be aria-label or data-testid)
+        # Using data-testid is often more robust if available and consistently used
+        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']" 
+                                     # Or: "button[aria-label='New Thread']" if data-testid isn't stable
     }
 }
 

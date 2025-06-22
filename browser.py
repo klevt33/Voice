@@ -8,6 +8,7 @@ from typing import Dict, Optional, Any, List
 import queue
 import sys
 import pyperclip
+from urllib.parse import urlparse
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -17,12 +18,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException, StaleElementReferenceException
-from config import DEBUGGER_ADDRESS, CHATS, ENABLE_SCREENSHOTS, SCREENSHOT_FOLDER
+from config import DEBUGGER_ADDRESS, ENABLE_SCREENSHOTS, SCREENSHOT_FOLDER
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
 
-def upload_screenshots(driver: webdriver.Chrome, screenshots: list) -> bool:
+def upload_screenshots(driver: webdriver.Chrome, screenshots: list, chat_config: Dict[str, Any]) -> bool:
     """
     Upload screenshots to the chat using the attach button
     
@@ -36,50 +37,57 @@ def upload_screenshots(driver: webdriver.Chrome, screenshots: list) -> bool:
     if not screenshots:
         return True
     
+    attach_button_selector = chat_config.get("attach_files_button_selector")
+    file_input_selector = chat_config.get("file_input_selector_after_attach")
+
+    if not attach_button_selector or not file_input_selector:
+        logger.error("Attach files or file input selector missing in chat_config for upload_screenshots.")
+        return False
+        
     try:
-        # Find the attach button using the specific HTML provided
         wait = WebDriverWait(driver, 5)
         
-        # Looking for the paperclip button with the specific aria-label
         attach_button = wait.until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Attach files. ']"))
+            EC.element_to_be_clickable((By.CSS_SELECTOR, attach_button_selector)) # Use from config
         )
-        
+        # It's good practice to click it if it's not already opening the file dialog implicitly by finding the input
+        # However, some UIs reveal the input[type=file] on hover or it's always present but hidden.
+        # For Perplexity, clicking the attach button is necessary.
+        attach_button.click() 
+        time.sleep(0.5) # Allow time for file input to appear/become active
+
         # Find the file input element that appears after clicking the attach button
-        # This is typically a hidden input element
-        file_inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='file']")
+        file_inputs = driver.find_elements(By.CSS_SELECTOR, file_input_selector) # Use from config
         
         if not file_inputs:
             logger.error("No file input element found after clicking attach button")
             return False
         
-        # Use the last file input element (most likely the one that just appeared)
-        file_input = file_inputs[-1]
+        file_input = file_inputs[-1] # Assume last one is the relevant one
         
-        # For multiple files, we need to ensure the file input allows multiple selections
         if len(screenshots) > 1 and not file_input.get_attribute("multiple"):
             logger.warning("File input doesn't support multiple files, uploading one by one")
-            for screenshot in screenshots:                
-                # Find the file input again
-                file_inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='file']")
-                if not file_inputs:
-                    continue
-                
-                file_input = file_inputs[-1]
-                file_input.send_keys(screenshot)
-                logger.info(f"Uploaded screenshot: {os.path.basename(screenshot)}")
-                time.sleep(1)  # Wait between uploads
+            for screenshot_path in screenshots: # Renamed to avoid conflict
+                # Re-click attach and re-find file input for each if necessary, though ideally it stays open
+                # For safety, we might need to re-click and re-find, but let's try without first
+                # Re-finding file_input if it becomes stale or only accepts one file at a time
+                # This part might need adjustment based on how the specific UI handles multiple single uploads
+                current_file_inputs = driver.find_elements(By.CSS_SELECTOR, file_input_selector)
+                if not current_file_inputs:
+                    logger.error(f"File input disappeared while trying to upload {os.path.basename(screenshot_path)}")
+                    continue # or return False
+                current_file_input_element = current_file_inputs[-1]
+                current_file_input_element.send_keys(screenshot_path)
+                logger.info(f"Uploaded screenshot: {os.path.basename(screenshot_path)}")
+                time.sleep(1) # Wait between uploads
         else:
-            # Join all screenshot paths with \n for multiple file upload
             file_input.send_keys('\n'.join(screenshots))
-            logger.info(f"Uploaded {len(screenshots)} screenshots at once")
+            logger.info(f"Uploaded {len(screenshots)} screenshots at once or single screenshot.")
         
-        # Wait for the file upload to complete
-        time.sleep(0.5)
-        
+        time.sleep(0.5) # Wait for upload to process visually
         return True
     except Exception as e:
-        logger.error(f"Screenshot upload failed: {e}")            
+        logger.error(f"Screenshot upload failed: {e}", exc_info=True)            
         return False
 
 def get_new_screenshots(screenshot_folder: str, last_check_time: datetime) -> list:
@@ -139,169 +147,283 @@ def get_chrome_driver() -> Optional[webdriver.Chrome]:
         logger.error(f"Failed to connect to Chrome: {e}")
         return None
 
-def new_chat(driver: webdriver.Chrome, chat_name: str, loaded_config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def new_chat(driver: webdriver.Chrome, chat_name_key: str, loaded_config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     if not driver:
         logger.error("Cannot initialize chat: No valid driver provided")
         return None
         
     try:
-        chat_config = loaded_config if loaded_config else CHATS.get(chat_name, None)
-        if not chat_config:
-            logger.error(f"Error: Chat configuration for {chat_name} not found")
+        chat_config_resolved = loaded_config
+        if not chat_config_resolved:
+            logger.error(f"Error: Chat configuration for {chat_name_key} not found or not pre-loaded correctly.")
             return None
-            
-        logger.info(f"Opening URL: {chat_config['url']}")
-        driver.get(chat_config["url"])
-        
-        wait = WebDriverWait(driver, 10)
-        # Ensure the prompt input element is at least present on the page
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, chat_config["css_selector"])))
-        
-        chat_config_copy = chat_config.copy()
-        chat_config_copy["driver"] = driver
-        chat_config_copy["last_screenshot_check"] = datetime.now()
-        
-        logger.info(f"Successfully opened new chat at {chat_config['url']}")
 
-        # Send the initial prompt using the updated send_to_chat
-        initial_prompt_content = chat_config_copy.get("prompt_initial_content")
+        # URL for actual navigation
+        nav_url = chat_config_resolved.get("url", "")
+        if not nav_url:
+            logger.error(f"Base URL 'url' missing in config for {chat_name_key}")
+            return None
+
+        # Extract domain from nav_url for checking if we're on the site
+        # e.g., from "https://www.perplexity.ai/" or "https://perplexity.ai/", domain_for_check becomes "perplexity.ai"
+        parsed_nav_url = urlparse(nav_url)
+        # Remove 'www.' if present for a more general domain check
+        domain_for_check = parsed_nav_url.netloc.replace("www.", "")
+
+        input_css_selector = chat_config_resolved.get("css_selector_input")
+        new_thread_button_selector = chat_config_resolved.get("new_thread_button_selector")
+
+        if not input_css_selector or not new_thread_button_selector:
+            logger.error(f"Essential config keys (css_selector_input, new_thread_button_selector) missing for {chat_name_key}")
+            return None
+        
+        wait_long = WebDriverWait(driver, 10) 
+        wait_short = WebDriverWait(driver, 5)  
+
+        current_url_str = ""
+        try:
+            current_url_str = driver.current_url
+            logger.info(f"Current URL before new_chat logic: {current_url_str}")
+        except WebDriverException as e:
+            logger.error(f"Could not get current URL: {e}. Attempting to navigate to base URL: {nav_url}")
+            driver.get(nav_url)
+            time.sleep(3) 
+            try:
+                wait_long.until(
+                    lambda d: domain_for_check in d.current_url.replace("www.", "") or 
+                              EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d)
+                )
+                current_url_str = driver.current_url
+                logger.info(f"URL after recovery navigation: {current_url_str}")
+            except Exception as e_recov:
+                logger.error(f"Still cannot establish a stable page after recovery navigation: {e_recov}. Aborting new_chat.")
+                return None
+        
+        current_url_domain = urlparse(current_url_str).netloc.replace("www.", "")
+        is_on_target_domain = (domain_for_check == current_url_domain)
+        
+        # Check if we are on the base path of the target domain (e.g. "https://www.perplexity.ai/")
+        # This means the path is empty, '/', or specific known home paths.
+        current_path = urlparse(current_url_str).path
+        is_on_base_path_of_domain = is_on_target_domain and (current_path == "/" or current_path == "" or current_path.lower().startswith("/home") or current_path.lower().startswith("/search"))
+        # If the current URL is exactly the nav_url (after stripping trailing slashes) it's also considered base.
+        if nav_url.rstrip('/') == current_url_str.rstrip('/'):
+            is_on_base_path_of_domain = True
+
+
+        if is_on_target_domain and not (nav_url.rstrip('/') == current_url_str.rstrip('/')): # On the domain, but not the exact base nav URL
+            logger.info(f"Already on a {domain_for_check} page ({current_url_str}), but not the base. Attempting to click 'New Thread'.")
+            try:
+                new_thread_button = wait_short.until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, new_thread_button_selector))
+                )
+                new_thread_button.click()
+                logger.info("'New Thread' button clicked successfully.")
+                # Wait for UI to reset: input field is ready on *some* perplexity page.
+                # The URL might change to a new search ID or back to base.
+                wait_long.until(
+                    lambda d: domain_for_check in d.current_url.replace("www.","") and
+                              EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector))(d)
+                )
+                logger.info(f"UI transitioned after 'New Thread'. Current URL: {driver.current_url}")
+            except Exception as e_click:
+                logger.warning(f"Error clicking 'New Thread' ('{new_thread_button_selector}'): {e_click}. Falling back to navigating to configured URL: {nav_url}")
+                driver.get(nav_url)
+                wait_long.until(lambda d: domain_for_check in d.current_url.replace("www.","") and EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d))
+        
+        elif not is_on_target_domain: # Not on the target domain at all
+            logger.info(f"Not on {domain_for_check} domain. Navigating to configured URL: {nav_url}")
+            driver.get(nav_url)
+            wait_long.until(lambda d: domain_for_check in d.current_url.replace("www.","") and EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d))
+        else: # Is on the target domain AND at the base nav_url, just ensure input is ready
+             logger.info(f"Already on the target base URL: {current_url_str}. Ensuring input is ready.")
+             wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector)))
+
+
+        # Final check for the input element's readiness
+        try:
+            logger.info(f"Final check for PRESENCE of input element: {input_css_selector}")
+            input_element_present = wait_short.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))
+            )
+            logger.info(f"Input element PRESENT. Tag: <{input_element_present.tag_name}>. Waiting for it to be CLICKABLE.")
+            
+            clickable_input_element = WebDriverWait(driver,10).until( # Slightly longer for clickability
+                EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector))
+            )
+            logger.info("Input element is NOW CLICKABLE.")
+
+        except TimeoutException:
+            logger.error(f"Timeout: Input element '{input_css_selector}' not found or not interactable after navigation/new thread logic.")
+            # ... (page source dump for debugging) ...
+            return None
+
+        chat_config_resolved["driver"] = driver 
+        chat_config_resolved["last_screenshot_check"] = datetime.now()
+        
+        logger.info(f"Successfully prepared new chat environment. Final URL: {driver.current_url}")
+
+        initial_prompt_content = chat_config_resolved.get("prompt_initial_content")
         if initial_prompt_content:
-            logger.info("Sending initial prompt to the chat...")
-            # send_to_chat now handles clearing (via JS) and setting value (via JS)
-            if send_to_chat(initial_prompt_content, chat_config_copy, submit=True):
+            logger.info("Sending initial prompt to the chat via clipboard method...")
+            if send_to_chat(initial_prompt_content, chat_config_resolved, submit=True):
                 logger.info("Initial prompt submitted successfully.")
             else:
                 logger.error("Failed to send/submit initial prompt.")
-                # Consider if this is fatal for new_chat; returning None would indicate failure.
-                # return None 
         else:
             logger.warning("No initial prompt content found in configuration.")
             
-        return chat_config_copy
+        return chat_config_resolved
 
-    except TimeoutException:
-        logger.error(f"Timeout waiting for chat UI elements to load for new_chat")
-        return None
-    except WebDriverException as e:
-        logger.error(f"WebDriverException in new_chat: {e}")
+    except WebDriverException as e_wd:
+        logger.error(f"WebDriverException in new_chat ({chat_name_key}): {e_wd}", exc_info=True)
         return None
     except Exception as e:
-        logger.error(f"Unexpected error initializing chat in new_chat: {e}", exc_info=True)
+        logger.error(f"Unexpected error initializing chat in new_chat ({chat_name_key}): {e}", exc_info=True)
         return None
 
 def send_to_chat(prompt_content: str, chat_config: Dict[str, Any], submit: bool = False) -> bool:
-    if not pyperclip:
-        logger.error("pyperclip is not available. Cannot use clipboard paste method. Skipping send_to_chat.")
-        return False # Or fallback to another method if designed
-
     if not prompt_content:
         logger.warning("Empty prompt content, not sending")
         return False
 
     if not chat_config or "driver" not in chat_config:
-        logger.error("Invalid chat configuration")
+        logger.error("Invalid chat configuration or driver missing")
+        return False
+
+    driver = chat_config["driver"] # Get driver from chat_config
+    input_css_selector = chat_config.get("css_selector_input")
+    if not input_css_selector:
+        logger.error("css_selector_input missing from chat configuration for send_to_chat.")
         return False
 
     logger.debug(f"Attempting to send to chat via clipboard. Length: {len(prompt_content)}, Submit: {submit}")
-    css_selector = chat_config.get("css_selector")
-    if not css_selector:
-        logger.error("CSS selector missing from chat configuration")
-        return False
-    logger.debug(f"Using CSS selector: {css_selector}")
+    logger.debug(f"Using input CSS selector: {input_css_selector}")
 
     max_retries = 3
     retry_count = 0
-
-    # Determine modifier key for paste based on platform
     modifier_key = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
 
     while retry_count < max_retries:
         try:
-            driver = chat_config["driver"]
             wait = WebDriverWait(driver, 10)
-            
-            # 1. Ensure element is present and then clear it
             prompt_input_clickable = wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)) # Use from config
             )
             try:
                 prompt_input_clickable.clear()
                 logger.debug("Prompt input field cleared via Selenium clear().")
-                # Add a tiny delay for the clear action to fully register if needed
-                time.sleep(0.1) 
-                # Verify it's empty
-                if prompt_input_clickable.get_attribute('value') != "":
-                    logger.warning("Field not empty after clear(). Trying JS clear as fallback.")
-                    driver.execute_script("arguments[0].value = '';", prompt_input_clickable)
+                time.sleep(0.1)
+                current_val_after_clear = prompt_input_clickable.get_attribute('value')
+                # For contenteditable div, 'value' might not be the right attribute. 'textContent' or 'innerText' might be.
+                # However, clear() on a contenteditable div should empty it.
+                # Let's check based on tag type.
+                tag_name = prompt_input_clickable.tag_name.lower()
+                is_empty = False
+                if tag_name == 'textarea':
+                    is_empty = (current_val_after_clear == "")
+                elif tag_name == 'div': # Assuming contenteditable div
+                    is_empty = (prompt_input_clickable.text == "")
+
+
+                if not is_empty:
+                    logger.warning(f"Field (tag: {tag_name}) not empty after clear(). Trying JS clear as fallback.")
+                    driver.execute_script("arguments[0].innerHTML = '';", prompt_input_clickable) # For div
+                    driver.execute_script("arguments[0].value = '';", prompt_input_clickable) # For textarea
                     driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", prompt_input_clickable)
                     time.sleep(0.1)
-                    if prompt_input_clickable.get_attribute('value') != "":
-                         logger.error("Field still not empty after JS clear. Paste might append.")
+                    if tag_name == 'textarea' and prompt_input_clickable.get_attribute('value') != "":
+                         logger.error("Textarea field still not empty after JS clear. Paste might append.")
+                    elif tag_name == 'div' and prompt_input_clickable.text != "":
+                         logger.error("Div field still not empty after JS clear. Paste might append.")
+
 
             except Exception as e_clear:
                 logger.warning(f"Could not reliably clear prompt input field: {e_clear}. Proceeding with paste.")
 
-
-            # Screenshot logic (if enabled)
             if ENABLE_SCREENSHOTS and "last_screenshot_check" in chat_config:
-                # ... (screenshot logic remains the same)
-                pass # Placeholder for brevity
-            chat_config["last_screenshot_check"] = datetime.now()
+                last_check_time = chat_config["last_screenshot_check"]
+                # Ensure SCREENSHOT_FOLDER is correctly sourced, assuming it's a global from config.py
+                new_screenshots_list = get_new_screenshots(SCREENSHOT_FOLDER, last_check_time) 
+                
+                if new_screenshots_list: # Check if there are any new screenshots
+                    # Pass driver, the list of new screenshots, and chat_config to upload_screenshots
+                    upload_was_successful = upload_screenshots(driver, new_screenshots_list, chat_config) 
+                    if not upload_was_successful:
+                        logger.warning("Failed to upload some screenshots during send_to_chat.")
+                # Update screenshot check time regardless of whether new ones were found or uploaded
+                chat_config["last_screenshot_check"] = datetime.now() 
 
-
-            # 2. Copy to clipboard and paste
             try:
                 pyperclip.copy(prompt_content)
                 logger.info(f"Content (len: {len(prompt_content)}) copied to clipboard.")
             except Exception as e_copy:
                 logger.error(f"Failed to copy to clipboard using pyperclip: {e_copy}. Cannot paste.")
-                return False # Critical failure for this method
+                return False
 
-            # Ensure the element is focused before pasting
-            prompt_input_clickable.click() # Click to ensure focus
-            time.sleep(0.2) # Small delay to ensure focus takes effect
-
-            logger.debug(f"Sending PASTE command ({modifier_key} + V)")
+            prompt_input_clickable.click()
+            time.sleep(0.2)
             ActionChains(driver).key_down(modifier_key).send_keys('v').key_up(modifier_key).perform()
-            
-            # Give a moment for the paste operation to complete and text to appear
-            time.sleep(0.5) # Adjust if needed, depends on system/browser responsiveness
+            time.sleep(0.5)
 
-            # 3. Verify the content
-            current_value = prompt_input_clickable.get_attribute('value')
-            # Normalize line endings for comparison, as clipboard/paste might change them
-            normalized_current_value = current_value.replace('\r\n', '\n')
+            # Verification: For contenteditable div, get_attribute('value') won't work. Use .text
+            current_value_from_field = ""
+            tag_name_verify = prompt_input_clickable.tag_name.lower()
+            if tag_name_verify == 'textarea':
+                current_value_from_field = prompt_input_clickable.get_attribute('value')
+            elif tag_name_verify == 'div': # contenteditable div
+                 # Need to handle the case where the div might contain a <p><br></p> when "empty" after user interaction
+                actual_text = prompt_input_clickable.text.strip()
+                # If Perplexity wraps pasted text in <p>, we might need to find that <p>
+                # For now, let's assume direct text or simple <p> wrapping.
+                # A more robust check might involve getting innerHTML and parsing.
+                # If prompt_content has newlines, .text might join them with spaces or lose them.
+                # This verification part for contenteditable divs is tricky.
+                # A simple check:
+                if prompt_content.strip() == actual_text: # Simplistic check, may fail with formatting
+                    current_value_from_field = prompt_content # Assume match for now for the logic below
+                else:
+                    # Try to get innerHTML to see the structure if it's a div
+                    try:
+                        inner_html = prompt_input_clickable.get_attribute('innerHTML')
+                        logger.debug(f"Contenteditable div innerHTML after paste: {inner_html[:200]}")
+                        # If it contains <p> tags, we might need to extract text from them.
+                        # For now, if .text matches, we assume it's good.
+                        # If not, the generic mismatch log will trigger.
+                        current_value_from_field = actual_text # Use what .text gives for comparison logic
+                    except:
+                        current_value_from_field = actual_text
+
+
+            normalized_current_value = current_value_from_field.replace('\r\n', '\n')
             normalized_prompt_content = prompt_content.replace('\r\n', '\n')
 
             if normalized_current_value == normalized_prompt_content:
-                logger.info("Textarea value matches expected content after paste.")
+                logger.info("Textarea/Div value matches expected content after paste.")
             else:
                 logger.warning(
-                    f"Textarea value mismatch after paste. Expected len: {len(normalized_prompt_content)}, Got len: {len(normalized_current_value)}."
+                    f"Textarea/Div value mismatch after paste. Expected len: {len(normalized_prompt_content)}, Got len: {len(normalized_current_value)}."
                 )
                 if abs(len(normalized_prompt_content) - len(normalized_current_value)) > 5 or len(normalized_prompt_content) < 150:
                     logger.debug(f"Expected full content (paste): '{normalized_prompt_content.replace(os.linesep, '/n')}'")
                     logger.debug(f"Actual full content (paste): '{normalized_current_value.replace(os.linesep, '/n')}'")
-                # This mismatch is a significant issue for the clipboard method's reliability.
-                # Depending on strictness, you might want to `return False` or retry.
 
 
-            # 4. Submit if requested
             if submit:
                 logger.info("Submitting the prompt via ENTER key.")
                 prompt_input_clickable.send_keys(Keys.ENTER)
                 chat_config["last_screenshot_check"] = datetime.now()
 
                 WebDriverWait(driver, 15).until(
-                    lambda d: d.find_element(By.CSS_SELECTOR, css_selector).get_attribute('value') == "" or \
-                              not is_submit_active(chat_config)
+                    lambda d: d.find_element(By.CSS_SELECTOR, input_css_selector).get_attribute('value') == "" or \
+                              d.find_element(By.CSS_SELECTOR, input_css_selector).text == "" or \
+                              not is_submit_active(chat_config) # Pass chat_config here
                 )
                 logger.info("Chat submitted and Perplexity appears to be processing or input field is clear.")
             else:
-                logger.info("Content pasted into textarea without submission.")
-
+                logger.info("Content pasted into textarea/div without submission.")
             return True
-
+        # ... (rest of except blocks remain similar, ensure StaleElement checks are robust) ...
         except StaleElementReferenceException:
             logger.warning(f"Stale element reference in send_to_chat (attempt {retry_count + 1}/{max_retries}), retrying...")
             retry_count += 1
@@ -320,10 +442,9 @@ def send_to_chat(prompt_content: str, chat_config: Dict[str, Any], submit: bool 
             time.sleep(1)
 
         except Exception as e:
-            # Check if it's a pyperclip specific error if it wasn't caught earlier
             if pyperclip and "pyperclip" in str(e).lower():
                  logger.error(f"PyperclipException during operation: {e}. Check clipboard utilities (xclip/xsel on Linux).")
-                 return False # Pyperclip issue is critical for this strategy
+                 return False
             logger.error(f"Unexpected error in send_to_chat: {e}", exc_info=True)
             retry_count += 1
             if retry_count >= max_retries:
@@ -333,57 +454,6 @@ def send_to_chat(prompt_content: str, chat_config: Dict[str, Any], submit: bool 
 
     logger.error(f"Failed to send message via clipboard after {max_retries} retries.")
     return False
-
-# The new_chat function would remain the same as your last working version,
-# as it just calls this send_to_chat function.
-# Ensure new_chat looks like this for context:
-def new_chat(driver: webdriver.Chrome, chat_name: str, loaded_config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    if not driver:
-        logger.error("Cannot initialize chat: No valid driver provided")
-        return None
-        
-    try:
-        chat_config = loaded_config if loaded_config else CHATS.get(chat_name, None)
-        if not chat_config:
-            logger.error(f"Error: Chat configuration for {chat_name} not found")
-            return None
-            
-        logger.info(f"Opening URL: {chat_config['url']}")
-        driver.get(chat_config["url"])
-        
-        # Wait for page to load and input field to be clickable for the initial clear/paste
-        wait = WebDriverWait(driver, 10)
-        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, chat_config["css_selector"])))
-        
-        chat_config_copy = chat_config.copy()
-        chat_config_copy["driver"] = driver
-        chat_config_copy["last_screenshot_check"] = datetime.now()
-        
-        logger.info(f"Successfully opened new chat at {chat_config['url']}")
-
-        initial_prompt_content = chat_config_copy.get("prompt_initial_content")
-        if initial_prompt_content:
-            logger.info("Sending initial prompt to the chat via clipboard method...")
-            # send_to_chat now uses clipboard
-            if send_to_chat(initial_prompt_content, chat_config_copy, submit=True):
-                logger.info("Initial prompt submitted successfully.")
-            else:
-                logger.error("Failed to send/submit initial prompt using clipboard method.")
-                # return None # Optionally, make this a fatal error for new_chat
-        else:
-            logger.warning("No initial prompt content found in configuration.")
-            
-        return chat_config_copy
-
-    except TimeoutException:
-        logger.error(f"Timeout waiting for chat UI elements to load for new_chat")
-        return None
-    except WebDriverException as e:
-        logger.error(f"WebDriverException in new_chat: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error initializing chat in new_chat: {e}", exc_info=True)
-        return None
 
 def load_prompt(chat_configs: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Load initial and message prompts from files and add to chat configurations.
@@ -429,29 +499,25 @@ def load_prompt(chat_configs: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, 
     return updated_configs
 
 def is_submit_active(chat_config: Dict[str, Any]) -> bool:
+    driver = chat_config.get("driver")
+    submit_button_selector = chat_config.get("submit_button_selector")
+
+    if not driver or not submit_button_selector:
+        logger.warning("Driver or submit_button_selector missing in chat_config for is_submit_active.")
+        return False # Cannot determine, assume not active or raise error
+
     try:
-        driver = chat_config["driver"]
-        button = driver.find_element(By.CSS_SELECTOR, 'button[aria-label="Submit"]')
-        if button.get_attribute("disabled") or "cursor-default" in button.get_attribute("class"):
+        button = driver.find_element(By.CSS_SELECTOR, submit_button_selector) # Use from config
+        # Check for 'disabled' attribute. If present (even if value is 'true' or empty), it's disabled.
+        if button.get_attribute("disabled") is not None: # More robust check for disabled
             return False
+        # Optionally, check for a specific class if the 'disabled' attribute isn't always used
+        # inactive_class = chat_config.get("submit_button_inactive_class")
+        # if inactive_class and inactive_class in button.get_attribute("class"):
+        #     return False
         return True
     except NoSuchElementException:
-        return False
-
-def send_chunked_text(prompt_input: WebElement, text: str, chunk_size: int = 50) -> None:
-    """Send text in small chunks to avoid input lag
-    
-    Args:
-        prompt_input: WebElement representing the input field
-        text: Text to send
-        chunk_size: Size of each chunk to send
-    """
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i+chunk_size]
-        prompt_input.send_keys(chunk)
-        time.sleep(0.05)
-
-# send_prompt function is removed as it's no longer needed with the new prompt logic.
+        return False # Button not found, so not active
 
 def browser_communication_thread(browser_queue: queue.Queue,
                                run_threads_ref: Dict[str, bool],

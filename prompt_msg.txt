@@ -1,1 +1,1 @@
-Review the conversation fragment(s) below, using previous interactions for context:
+Analyze the following conversation fragment(s) based on the [SYSTEM INITIALIZATION PROTOCOL]. Provide targeted technical insights and actionable advice to enhance my (user [ME]) understanding and contributions:
