@@ -42,14 +42,16 @@ CHATS = {
         "prompt_msg_file": "prompt_msg.txt",
         "css_selector_input": "[id='ask-input']",
         "submit_button_selector": "button[aria-label='Submit']",
-        # Corrected selector for Attach Files button
         "attach_files_button_selector": "button[aria-label='Attach files']",
         "file_input_selector_after_attach": "input[type='file']",
-        # Add selector for the "New Thread" button (can be aria-label or data-testid)
-        # Using data-testid is often more robust if available and consistently used
-        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']" 
-                                     # Or: "button[aria-label='New Thread']" if data-testid isn't stable
-    }
+        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']",
+        # --- New Keys Below ---
+        "human_verification_text_selector": "p.h2.spacer-bottom", # Adjust if Perplexity's specific selector is different/better
+        "human_verification_text_content": "Verify you are human", # The text to look for
+        "browser_window_title_part_generic": "Perplexity", # Generic part of title for fallback focus
+        "browser_executable_name_part": "Chrome" # e.g., "Chrome", "msedge" (used by pygetwindow if needed)
+    },
+    # Potentially other chat services here
 }
 
 # Add DLL directories at import time

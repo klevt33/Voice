@@ -13,7 +13,12 @@ from typing import Dict, List, Any, Optional
 from TopicsUI import TopicProcessor, Topic # Assuming Topic is used, if not remove
 from audio_handler import recording_thread
 from transcription import transcription_thread
-from browser import get_chrome_driver, new_chat, load_prompt, browser_communication_thread
+from browser import (
+    get_chrome_driver, new_chat, load_prompt, browser_communication_thread,
+    focus_browser_window, # New import
+    SUBMISSION_SUCCESS, SUBMISSION_FAILED_INPUT_UNAVAILABLE, # New imports
+    SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED, SUBMISSION_NO_CONTENT # New imports
+)
 from config import (
     MIC_INDEX_ME, MIC_INDEX_OTHERS, CHAT, CHATS
 )
@@ -39,6 +44,7 @@ class AudioToChat:
         # Global state variables
         self.run_threads_ref = {"active": True, "listening": False}
         self.audio = None
+        self.topic_processor: Optional[TopicProcessor] = None
         
         # Queues for inter-thread communication
         self.audio_queue = queue.Queue()
@@ -84,9 +90,12 @@ class AudioToChat:
         logger.info("Stopping microphone listening")
         self.run_threads_ref["listening"] = False
         
-    def submit_topics(self, content):
-        logger.info(f"Submitting topics to browser queue: {content[:50]}..." if len(content) > 50 else f"Submitting topics to browser queue: {content}")
-        self.browser_queue.put(content)
+    def submit_topics(self, content_text: str, selected_topic_objects: List[Topic]):
+        logger.info(f"AudioToChat: Queueing submission for browser - {len(selected_topic_objects)} topics.")
+        self.browser_queue.put({
+            "content": content_text,
+            "topic_objects": selected_topic_objects 
+        })
 
     def add_transcript_to_ui(self, transcript):
         self.ui_queue.put(transcript)
@@ -163,31 +172,50 @@ class AudioToChat:
         
         logger.info("Application shutdown cleanup finished.")
 
-
     def initialize_ui(self):
         self.root = tk.Tk()
+        # Pass `self` (the AudioToChat instance) as app_controller to TopicProcessor
         self.topic_processor = TopicProcessor(
-            self.root, 
+            self.root,
+            self, # Pass self as app_controller
             self.start_listening, 
             self.stop_listening,
             self.submit_topics
         )
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.root.after(100, self.process_transcript_queue) # Start UI queue processing
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing_ui_initiated) # Changed to new handler name
+        self.root.after(100, self.process_transcript_queue)
     
-    def on_closing(self):
-        """Handle window close event."""
-        logger.info("Window closing event triggered. Initiating shutdown...")
-        self.handle_exit() # Perform cleanup
+    def on_closing_ui_initiated(self):
+        """Handle window close event initiated from UI's WM_DELETE_WINDOW."""
+        logger.info("UI window closing event triggered. Initiating full application shutdown...")
+        # self.handle_exit() will be called, which should stop threads and then UI can be destroyed.
+        # If handle_exit doesn't destroy the root, it should be done after handle_exit.
         
-        # Ensure root window is destroyed if it still exists
+        # Schedule handle_exit to run, then destroy root.
+        # This allows handle_exit to complete thread joins before Tkinter vanishes.
+        self.handle_exit() # Perform all backend cleanup
+
         if self.root and self.root.winfo_exists():
             try:
                 self.root.destroy()
-                logger.info("Tkinter root window destroyed.")
+                logger.info("Tkinter root window destroyed after backend cleanup.")
             except tk.TclError as e:
                 logger.warning(f"Error destroying Tkinter root window (possibly already destroyed): {e}")
-        logger.info("Application will now exit.")
+        logger.info("Application shutdown sequence from UI complete.")
+
+    # def on_closing(self):
+    #     """Handle window close event."""
+    #     logger.info("Window closing event triggered. Initiating shutdown...")
+    #     self.handle_exit() # Perform cleanup
+        
+    #     # Ensure root window is destroyed if it still exists
+    #     if self.root and self.root.winfo_exists():
+    #         try:
+    #             self.root.destroy()
+    #             logger.info("Tkinter root window destroyed.")
+    #         except tk.TclError as e:
+    #             logger.warning(f"Error destroying Tkinter root window (possibly already destroyed): {e}")
+    #     logger.info("Application will now exit.")
 
 
     def initialize_audio(self):
@@ -198,36 +226,124 @@ class AudioToChat:
             logger.error(f"Failed to initialize PyAudio: {e}")
             return False
 
-    def initialize_browser(self):
+    def initialize_browser(self) -> bool: # Added return type hint
         try:
+            if self.topic_processor:
+                self.topic_processor.update_browser_status("info", "Status: Connecting to browser...")
+            
             driver = get_chrome_driver()
             if not driver:
                 logger.error("Failed to initialize Chrome driver")
+                if self.topic_processor:
+                    self.topic_processor.update_browser_status("error", "Status: Failed to connect to Chrome.")
                 return False
             
             logger.info(f"Chrome session id: {driver.session_id}")
             
-            chat_configs_with_prompts = load_prompt(CHATS) # Load all prompts
-            
-            active_chat_name = CHAT
+            chat_configs_with_prompts = load_prompt(CHATS)
+            active_chat_name = CHAT # CHAT is your global config for current service
             active_chat_config_loaded = chat_configs_with_prompts.get(active_chat_name)
             
             if not active_chat_config_loaded:
                 logger.error(f"Failed to load chat configuration (with prompts) for {active_chat_name}")
+                if self.topic_processor:
+                    self.topic_processor.update_browser_status("error", f"Status: Config load error for {active_chat_name}.")
                 return False
             
-            # new_chat will use the loaded config (which includes prompts) and send initial prompt
-            self.chat_config = new_chat(driver, active_chat_name, active_chat_config_loaded)
-            if not self.chat_config:
-                logger.error(f"Failed to initialize chat '{active_chat_name}' in browser.")
+            # new_chat now returns bool and modifies active_chat_config_loaded in place if successful
+            # by adding the 'driver' to it (or it should, let's re-verify new_chat's contract.
+            # The current new_chat takes 'loaded_config' and adds driver to it.
+            if new_chat(driver, active_chat_name, active_chat_config_loaded):
+                self.chat_config = active_chat_config_loaded # This config now includes the driver and prompts
+                if self.topic_processor:
+                    self.topic_processor.update_browser_status("browser_ready", f"Status: Connected to {active_chat_name}.")
+                logger.info(f"Browser initialized successfully for {active_chat_name}.")
+                return True
+            else:
+                self.chat_config = None # Ensure it's None on failure
+                logger.error(f"Failed to initialize chat '{active_chat_name}' in browser via new_chat.")
+                if self.topic_processor:
+                    self.topic_processor.update_browser_status("error", f"Status: Failed to init {active_chat_name}.")
+                if driver: # Attempt to quit driver if new_chat failed but driver was obtained
+                    try: driver.quit()
+                    except Exception as e_quit: logger.error(f"Error quitting driver after new_chat failure: {e_quit}")
                 return False
                 
-            return True
         except Exception as e:
             logger.error(f"Error initializing browser: {e}", exc_info=True)
+            if self.topic_processor:
+                self.topic_processor.update_browser_status("error", "Status: Browser initialization error.")
             return False
 
-    def start_threads(self):
+    def request_new_ai_thread(self):
+        logger.info("AudioToChat: Requesting new AI thread...")
+        if not self.chat_config or not self.chat_config.get("driver"):
+            logger.error("Cannot start new AI thread: Browser/driver not initialized.")
+            if self.topic_processor:
+                self.topic_processor.update_browser_status("error", "Status: Browser not ready for new thread.")
+            return
+
+        if self.topic_processor:
+            self.topic_processor.update_browser_status("info", "Status: Initializing new AI thread...")
+
+        driver = self.chat_config.get("driver")
+        active_chat_name = CHAT # Assuming CHAT from config.py is the one we are using
+
+        # We need the config that includes prompt *content* for new_chat
+        chat_configs_with_prompts = load_prompt(CHATS) 
+        loaded_config_for_new_chat = chat_configs_with_prompts.get(active_chat_name)
+
+        if not loaded_config_for_new_chat:
+            logger.error(f"Could not load config with prompts for {active_chat_name} to start new thread.")
+            if self.topic_processor:
+                self.topic_processor.update_browser_status("error", f"Status: Config error for new thread ({active_chat_name}).")
+            return
+
+        # new_chat will use the existing driver and the re-loaded prompt configuration
+        if new_chat(driver, active_chat_name, loaded_config_for_new_chat):
+            # Update self.chat_config to the one that new_chat potentially modified (e.g., if it re-set last_screenshot_check)
+            self.chat_config = loaded_config_for_new_chat # This now has driver and fresh prompt info
+            logger.info("New AI thread successfully initialized via UI request.")
+            if self.topic_processor:
+                self.topic_processor.update_browser_status("browser_ready", "Status: New AI thread ready.")
+        else:
+            logger.error("Failed to initialize new AI thread via UI request.")
+            if self.topic_processor:
+                # The status inside new_chat (if it failed due to human verification) should be more specific
+                # For now, a generic failure from new_chat call.
+                self.topic_processor.update_browser_status("error", "Status: Failed to start new AI thread.")
+
+    def update_ui_after_submission(self, status: str, successfully_submitted_topics: List[Topic]):
+        """
+        Callback to update UI based on submission status from browser thread.
+        This method is called from the browser_communication_thread, so UI updates
+        must be scheduled to run in the main Tkinter thread using root.after().
+        """
+        if not self.root or not self.root.winfo_exists() or not self.topic_processor:
+            logger.warning("UI not available for update_ui_after_submission.")
+            return
+
+        def _update_task():
+            if not self.topic_processor: return
+
+            if status == SUBMISSION_SUCCESS:
+                if successfully_submitted_topics: # Should always be true if SUCCESS
+                    self.topic_processor.clear_successfully_submitted_topics(successfully_submitted_topics)
+                self.topic_processor.update_browser_status("browser_ready", "Status: Topics submitted successfully.")
+                if self.chat_config and self.chat_config.get("driver"): # Focus browser on success
+                    focus_browser_window(self.chat_config.get("driver"), self.chat_config)
+            elif status == SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED:
+                self.topic_processor.update_browser_status("browser_human_verification", "AI: Verify Human! (Topics NOT Sent)")
+            elif status == SUBMISSION_FAILED_INPUT_UNAVAILABLE:
+                self.topic_processor.update_browser_status("browser_input_unavailable", "AI: Input Unavail. (Topics NOT Sent)")
+            elif status == SUBMISSION_NO_CONTENT:
+                 self.topic_processor.update_browser_status("warning", "Status: No content was sent.")
+            else: # SUBMISSION_FAILED_OTHER or any other failure
+                self.topic_processor.update_browser_status("error", "Status: Failed to send topics to AI.")
+        
+        self.root.after(0, _update_task)
+
+    def start_threads(self) -> bool:
         # Ensure audio system is initialized before starting audio threads
         if not self.audio:
             logger.error("PyAudio not initialized. Cannot start recording threads.")
@@ -257,24 +373,25 @@ class AudioToChat:
         transcriber.daemon = True
         self.threads.append(transcriber)
             
-        if not self.chat_config:
-            logger.error("Chat not configured. Cannot start browser communication thread.")
-            return False # Indicate failure
+        if not self.chat_config: # Check if browser/chat was initialized
+            logger.error("Chat not configured (self.chat_config is None). Cannot start browser communication thread.")
+            return False
 
         browser_comm = threading.Thread(
             name="BrowserCommunication",
             target=browser_communication_thread,
-            args=(self.browser_queue, self.run_threads_ref, self.chat_config)
+            args=(self.browser_queue, self.run_threads_ref, self.chat_config, self.update_ui_after_submission) # Pass NEW callback
         )
         browser_comm.daemon = True
         self.threads.append(browser_comm)
             
         for thread in self.threads:
-            thread.start()
-            logger.info(f"Started thread: {thread.name}")
+            if not thread.is_alive(): # Only start if not already started (e.g. during a restart logic if any)
+                thread.start()
+                logger.info(f"Started thread: {thread.name}")
             
-        logger.info("All threads started")
-        return True # Indicate success
+        logger.info("All essential threads started or confirmed running.")
+        return True
 
     def run(self):
         try:
