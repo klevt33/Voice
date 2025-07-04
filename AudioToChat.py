@@ -226,92 +226,92 @@ class AudioToChat:
             logger.error(f"Failed to initialize PyAudio: {e}")
             return False
 
-    def initialize_browser(self) -> bool: # Added return type hint
+    def initialize_browser(self) -> bool:
         try:
+            # ... (UI status updates, get_chrome_driver, load_prompt as before) ...
             if self.topic_processor:
                 self.topic_processor.update_browser_status("info", "Status: Connecting to browser...")
             
             driver = get_chrome_driver()
-            if not driver:
+            if not driver: # ... (handle driver failure) ...
                 logger.error("Failed to initialize Chrome driver")
-                if self.topic_processor:
-                    self.topic_processor.update_browser_status("error", "Status: Failed to connect to Chrome.")
+                if self.topic_processor: self.topic_processor.update_browser_status("error", "Status: Failed to connect to Chrome.")
                 return False
-            
+
             logger.info(f"Chrome session id: {driver.session_id}")
             
             chat_configs_with_prompts = load_prompt(CHATS)
-            active_chat_name = CHAT # CHAT is your global config for current service
+            active_chat_name = CHAT
             active_chat_config_loaded = chat_configs_with_prompts.get(active_chat_name)
             
-            if not active_chat_config_loaded:
+            if not active_chat_config_loaded: # ... (handle config load failure) ...
                 logger.error(f"Failed to load chat configuration (with prompts) for {active_chat_name}")
-                if self.topic_processor:
-                    self.topic_processor.update_browser_status("error", f"Status: Config load error for {active_chat_name}.")
+                if self.topic_processor: self.topic_processor.update_browser_status("error", f"Status: Config load error for {active_chat_name}.")
                 return False
-            
-            # new_chat now returns bool and modifies active_chat_config_loaded in place if successful
-            # by adding the 'driver' to it (or it should, let's re-verify new_chat's contract.
-            # The current new_chat takes 'loaded_config' and adds driver to it.
-            if new_chat(driver, active_chat_name, active_chat_config_loaded):
-                self.chat_config = active_chat_config_loaded # This config now includes the driver and prompts
+
+            # --- MODIFICATION: Call new_chat with force_new_thread_and_init_prompt=False ---
+            # No context is passed from UI at initial startup.
+            if new_chat(driver, active_chat_name, active_chat_config_loaded, context_text=None, force_new_thread_and_init_prompt=False):
+                self.chat_config = active_chat_config_loaded
+                # Adjust UI message to reflect that we might just be connecting to an existing session
+                status_message = f"Status: Connected to {active_chat_name}."
+                if not active_chat_config_loaded.get('initial_prompt_sent_this_session', False): # A way to check if prompt was sent by new_chat
+                     current_url = driver.current_url
+                     if CHATS[active_chat_name]["url"].rstrip('/') in current_url: # If on base URL after potential nav
+                        status_message += " Initial prompt sent."
+                     else:
+                        status_message += " Ready. Use 'New Thread' to start conversation."
+
                 if self.topic_processor:
-                    self.topic_processor.update_browser_status("browser_ready", f"Status: Connected to {active_chat_name}.")
-                logger.info(f"Browser initialized successfully for {active_chat_name}.")
+                    self.topic_processor.update_browser_status("browser_ready", status_message)
+                logger.info(f"Browser initialized successfully for {active_chat_name}. Startup connection logic complete.")
                 return True
             else:
-                self.chat_config = None # Ensure it's None on failure
-                logger.error(f"Failed to initialize chat '{active_chat_name}' in browser via new_chat.")
-                if self.topic_processor:
-                    self.topic_processor.update_browser_status("error", f"Status: Failed to init {active_chat_name}.")
-                if driver: # Attempt to quit driver if new_chat failed but driver was obtained
-                    try: driver.quit()
-                    except Exception as e_quit: logger.error(f"Error quitting driver after new_chat failure: {e_quit}")
+                # ... (handle new_chat failure as before) ...
+                self.chat_config = None 
+                logger.error(f"Failed to initialize/connect to chat '{active_chat_name}' in browser via new_chat during startup.")
+                if self.topic_processor: self.topic_processor.update_browser_status("error", f"Status: Failed to init/connect {active_chat_name}.")
+                if driver: 
+                    try: 
+                        driver.quit() 
+                    except Exception as e_q: logger.error(f"Error quitting driver: {e_q}")
                 return False
-                
+        # ... (outer exception handling as before) ...
         except Exception as e:
             logger.error(f"Error initializing browser: {e}", exc_info=True)
-            if self.topic_processor:
-                self.topic_processor.update_browser_status("error", "Status: Browser initialization error.")
+            if self.topic_processor: self.topic_processor.update_browser_status("error", "Status: Browser initialization error.")
             return False
 
-    def request_new_ai_thread(self):
-        logger.info("AudioToChat: Requesting new AI thread...")
+    def request_new_ai_thread(self, context_text: Optional[str] = None):
+        logger.info(f"AudioToChat: UI triggered 'New Thread'. Context provided: {'Yes' if context_text else 'No'}")
+        # ... (checks for self.chat_config, driver as before) ...
         if not self.chat_config or not self.chat_config.get("driver"):
-            logger.error("Cannot start new AI thread: Browser/driver not initialized.")
-            if self.topic_processor:
-                self.topic_processor.update_browser_status("error", "Status: Browser not ready for new thread.")
+            logger.error("Cannot start new AI thread from UI: Browser/driver not initialized.")
+            if self.topic_processor: self.topic_processor.update_browser_status("error", "Status: Browser not ready for new thread.")
             return
 
-        if self.topic_processor:
-            self.topic_processor.update_browser_status("info", "Status: Initializing new AI thread...")
+        if self.topic_processor: self.topic_processor.update_browser_status("info", "Status: Initializing new AI thread...")
 
         driver = self.chat_config.get("driver")
-        active_chat_name = CHAT # Assuming CHAT from config.py is the one we are using
-
-        # We need the config that includes prompt *content* for new_chat
-        chat_configs_with_prompts = load_prompt(CHATS) 
+        active_chat_name = CHAT
+        chat_configs_with_prompts = load_prompt(CHATS)
         loaded_config_for_new_chat = chat_configs_with_prompts.get(active_chat_name)
 
-        if not loaded_config_for_new_chat:
-            logger.error(f"Could not load config with prompts for {active_chat_name} to start new thread.")
-            if self.topic_processor:
-                self.topic_processor.update_browser_status("error", f"Status: Config error for new thread ({active_chat_name}).")
+        if not loaded_config_for_new_chat: # ... (handle config load failure) ...
+            logger.error(f"Could not load config with prompts for {active_chat_name} to start new thread from UI.")
+            if self.topic_processor: self.topic_processor.update_browser_status("error", f"Status: Config error for new thread ({active_chat_name}).")
             return
 
-        # new_chat will use the existing driver and the re-loaded prompt configuration
-        if new_chat(driver, active_chat_name, loaded_config_for_new_chat):
-            # Update self.chat_config to the one that new_chat potentially modified (e.g., if it re-set last_screenshot_check)
-            self.chat_config = loaded_config_for_new_chat # This now has driver and fresh prompt info
+        # --- MODIFICATION: Call new_chat with force_new_thread_and_init_prompt=True ---
+        if new_chat(driver, active_chat_name, loaded_config_for_new_chat, context_text=context_text, force_new_thread_and_init_prompt=True):
+            self.chat_config = loaded_config_for_new_chat
             logger.info("New AI thread successfully initialized via UI request.")
             if self.topic_processor:
                 self.topic_processor.update_browser_status("browser_ready", "Status: New AI thread ready.")
         else:
+            # ... (handle new_chat failure as before) ...
             logger.error("Failed to initialize new AI thread via UI request.")
-            if self.topic_processor:
-                # The status inside new_chat (if it failed due to human verification) should be more specific
-                # For now, a generic failure from new_chat call.
-                self.topic_processor.update_browser_status("error", "Status: Failed to start new AI thread.")
+            if self.topic_processor: self.topic_processor.update_browser_status("error", "Status: Failed to start new AI thread.")
 
     def update_ui_after_submission(self, status: str, successfully_submitted_topics: List[Topic]):
         """
@@ -329,6 +329,7 @@ class AudioToChat:
             if status == SUBMISSION_SUCCESS:
                 if successfully_submitted_topics: # Should always be true if SUCCESS
                     self.topic_processor.clear_successfully_submitted_topics(successfully_submitted_topics)
+                    self.topic_processor.clear_full_text_display()
                 self.topic_processor.update_browser_status("browser_ready", "Status: Topics submitted successfully.")
                 if self.chat_config and self.chat_config.get("driver"): # Focus browser on success
                     focus_browser_window(self.chat_config.get("driver"), self.chat_config)

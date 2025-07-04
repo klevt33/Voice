@@ -27,7 +27,7 @@ LANGUAGE = "en"        # Set to English only
 BEAM_SIZE = 5          # Beam size for faster-whisper
 
 # Chat configuration
-CHAT = "Perplexity"    # Default chat to use
+CHAT = "ChatGPT"    # Default chat to use: "Perplexity" or "ChatGPT"
 DEBUGGER_ADDRESS = "localhost:9222"  # Debugging address for Chrome
 
 # Screenshot configuration
@@ -40,18 +40,30 @@ CHATS = {
         "url": "https://www.perplexity.ai/",
         "prompt_init_file": "prompt_init.txt",
         "prompt_msg_file": "prompt_msg.txt",
+        # Use 'clipboard' as the input method, which works best for Perplexity's div
+        "input_method": "clipboard", 
         "css_selector_input": "[id='ask-input']",
         "submit_button_selector": "button[aria-label='Submit']",
         "attach_files_button_selector": "button[aria-label='Attach files']",
         "file_input_selector_after_attach": "input[type='file']",
-        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']",
-        # --- New Keys Below ---
-        "human_verification_text_selector": "p.h2.spacer-bottom", # Adjust if Perplexity's specific selector is different/better
-        "human_verification_text_content": "Verify you are human", # The text to look for
-        "browser_window_title_part_generic": "Perplexity", # Generic part of title for fallback focus
-        "browser_executable_name_part": "Chrome" # e.g., "Chrome", "msedge" (used by pygetwindow if needed)
+        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']"
     },
-    # Potentially other chat services here
+    "ChatGPT": {
+        "url": "https://chatgpt.com/",
+        "prompt_init_file": "prompt_init.txt", # Use a separate prompt for ChatGPT
+        "prompt_msg_file": "prompt_msg.txt",   # and a separate message prompt
+        # ChatGPT's input often works well with send_keys. It's good to have this option.
+        "input_method": "send_keys", 
+        # Using ID is very reliable.
+        "css_selector_input": "[id='prompt-textarea']", 
+        # Using data-testid is very reliable for automation.
+        "submit_button_selector": "button[data-testid='send-button']", 
+        # The 'Attach files' button on ChatGPT. ID is a good choice.
+        "attach_files_button_selector": "[id='upload-file-btn']", 
+        "file_input_selector_after_attach": "input[type='file']",
+        # The "New chat" button in the top left is a link to the base URL. This is a very stable selector.
+        "new_thread_button_selector": "a[href='/']" 
+    }
 }
 
 # Add DLL directories at import time

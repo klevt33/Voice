@@ -166,8 +166,12 @@ class TopicProcessor:
     def request_new_ai_thread_ui(self):
         logger.info("UI 'New Thread' button clicked.")
         if self.app_controller and hasattr(self.app_controller, 'request_new_ai_thread'):
+            # Get context from the UI field
+            context_from_ui = self.context_text.get(1.0, tk.END).strip()
+            
             self.update_browser_status("info", "Status: Starting new AI thread...")
-            self.app_controller.request_new_ai_thread()
+            # Pass the context to the app controller's method
+            self.app_controller.request_new_ai_thread(context_text=context_from_ui)
         else:
             self.update_browser_status("error", "Error: New thread function not available.")
 
@@ -314,6 +318,13 @@ class TopicProcessor:
             self.full_text.insert(tk.END, self.topics[idx].text)
             self.full_text.config(state="disabled")
     
+    def clear_full_text_display(self):
+        """Clears the content of the 'Full Topic Text' ScrolledText widget."""
+        self.full_text.config(state="normal")
+        self.full_text.delete(1.0, tk.END)
+        self.full_text.config(state="disabled")
+
+
     def select_topics(self, select_all=True):
         """Select or deselect all topics"""
         for topic in self.topics:

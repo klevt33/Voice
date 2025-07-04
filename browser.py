@@ -53,39 +53,13 @@ def focus_browser_window(driver: Optional[webdriver.Chrome], chat_config: Dict[s
                 if windows:
                     target_window = windows[0] # Assume first match is the one
             except Exception as e_title_match:
-                logger.warning(f"Could not find window by exact Selenium title '{current_selenium_title}': {e_title_match}. Will try generic title.")
-
-        # Attempt 2: Fallback to generic title part from config if exact match failed or title was empty
-        if not target_window:
-            generic_title_part = chat_config.get("browser_window_title_part_generic", "browser")
-            browser_exe_name_part = chat_config.get("browser_executable_name_part", "") # e.g., "Chrome"
-            logger.info(f"Fallback: Searching for window containing '{generic_title_part}' (and possibly '{browser_exe_name_part}')")
-            
-            all_windows = pygetwindow.getAllWindows()
-            candidate_windows = []
-            for win in all_windows:
-                title_lower = win.title.lower()
-                if generic_title_part.lower() in title_lower:
-                    if browser_exe_name_part.lower() in title_lower: # Prefer if browser name also matches
-                        candidate_windows.insert(0, win) # Prioritize
-                    else:
-                        candidate_windows.append(win)
-            
-            if not candidate_windows and browser_exe_name_part: # If generic_title_part yielded nothing, try just browser name
-                 logger.info(f"Fallback 2: Searching for window containing only '{browser_exe_name_part}'")
-                 for win in all_windows:
-                     if browser_exe_name_part.lower() in win.title.lower():
-                         candidate_windows.append(win)
-
-            if candidate_windows:
-                target_window = candidate_windows[0]
+                logger.warning(f"Could not find window by exact Selenium title '{current_selenium_title}': {e_title_match}")
 
         if target_window:
             logger.info(f"Found target window: '{target_window.title}'. Attempting to activate.")
             if target_window.isMinimized:
                 target_window.restore()
             target_window.activate()
-            # A small delay might be needed for the OS to switch focus completely
             time.sleep(0.1) 
             logger.info(f"Window '{target_window.title}' activated.")
             return True
@@ -274,125 +248,147 @@ def get_chrome_driver() -> Optional[webdriver.Chrome]:
         logger.error(f"Failed to connect to Chrome: {e}")
         return None
 
-def new_chat(driver: webdriver.Chrome, chat_name_key: str, loaded_config: Optional[Dict[str, Any]] = None) -> bool:
-    if not driver:
-        logger.error("Cannot initialize chat: No valid driver provided")
-        return False
-        
-    if not loaded_config:
-        logger.error(f"Error: Chat configuration (with prompts) for {chat_name_key} not provided to new_chat.")
+def _send_initial_prompt_logic(driver: webdriver.Chrome, 
+                               chat_config_resolved: Dict[str, Any], 
+                               context_text: Optional[str] = None) -> bool:
+    logger.info("Entering _send_initial_prompt_logic.")
+    input_status_final = is_input_field_ready_and_no_verification(driver, chat_config_resolved, timeout=5)
+    if input_status_final != SUBMISSION_SUCCESS:
+        logger.error(f"Input field not ready or verification detected before sending initial prompt. Status: {input_status_final}")
         return False
 
-    chat_config_resolved = loaded_config
-    chat_config_resolved["driver"] = driver # Ensure driver is part of the config used internally
+    chat_config_resolved["last_screenshot_check"] = datetime.now()
+    logger.info(f"Chat environment ready for initial prompt. Final URL: {driver.current_url}")
+
+    initial_prompt_from_file = chat_config_resolved.get("prompt_initial_content", "")
+    final_initial_prompt_to_send = initial_prompt_from_file
+
+    if context_text and context_text.strip():
+        stripped_context = context_text.strip()
+        if final_initial_prompt_to_send:
+            final_initial_prompt_to_send = f"{final_initial_prompt_to_send}\n\n[CONTEXT] {stripped_context}"
+        else:
+            final_initial_prompt_to_send = f"[CONTEXT] {stripped_context}"
+        logger.info(f"Context from UI (length {len(stripped_context)}) incorporated into initial message.")
+    
+    requires_initial_submission = chat_config_resolved.get("requires_initial_submission", True)
+
+    if final_initial_prompt_to_send and final_initial_prompt_to_send.strip():
+        logger.info(f"Sending initial message (length {len(final_initial_prompt_to_send)}) to the chat...")
+        submission_status = send_to_chat(final_initial_prompt_to_send, chat_config_resolved, submit=requires_initial_submission)
+        
+        if submission_status == SUBMISSION_SUCCESS:
+            logger.info(f"Initial message processed successfully (submit={requires_initial_submission}).")
+            return True
+        else:
+            logger.error(f"Failed to send/submit initial message. Status: {submission_status}")
+            return False
+    else:
+        logger.warning("No initial prompt content and no UI context. No initial message sent.")
+        return True # Environment is ready, just nothing to send.
+
+def new_chat(driver: webdriver.Chrome, 
+             chat_name_key: str, 
+             loaded_config: Optional[Dict[str, Any]] = None, 
+             context_text: Optional[str] = None,
+             force_new_thread_and_init_prompt: bool = False) -> bool: # New parameter
+    if not driver:
+        logger.error("Cannot initialize chat in new_chat: No valid driver provided")
+        return False
+    if not loaded_config:
+        logger.error(f"Error in new_chat: Chat configuration (with prompts) for {chat_name_key} not provided.")
+        return False
+
+    chat_config_resolved = loaded_config 
+    chat_config_resolved["driver"] = driver 
 
     try:
         nav_url = chat_config_resolved.get("url", "")
-        if not nav_url:
-            logger.error(f"Base URL 'url' missing in config for {chat_name_key}")
-            return False
-
-        parsed_nav_url = urlparse(nav_url)
-        domain_for_check = parsed_nav_url.netloc.replace("www.", "")
-
         input_css_selector = chat_config_resolved.get("css_selector_input")
         new_thread_button_selector = chat_config_resolved.get("new_thread_button_selector")
 
-        if not input_css_selector : # new_thread_button_selector can be optional if not all sites have it
-            logger.error(f"Essential config key (css_selector_input) missing for {chat_name_key}")
+        if not nav_url or not input_css_selector: # new_thread_button_selector is optional
+            logger.error(f"Essential config keys (url, css_selector_input) missing for {chat_name_key} in new_chat")
             return False
         
-        wait_long = WebDriverWait(driver, 10) 
-        wait_short = WebDriverWait(driver, 5)  
-
+        parsed_nav_url = urlparse(nav_url)
+        domain_for_check = parsed_nav_url.netloc.replace("www.", "")
+        wait_long = WebDriverWait(driver, 10)
+        
         current_url_str = ""
         try:
             current_url_str = driver.current_url
-            logger.info(f"Current URL before new_chat logic: {current_url_str}")
-        except WebDriverException as e:
-            logger.warning(f"Could not get current URL: {e}. Attempting to navigate to base URL: {nav_url}")
+        except WebDriverException: # Handle if browser is in a bad state
+            logger.warning("Could not get current URL in new_chat (browser might be starting/crashed). Attempting recovery by navigating.")
             try:
                 driver.get(nav_url)
-                # Wait for navigation to complete, check domain and presence of input field as indicator
-                wait_long.until(
-                    lambda d: domain_for_check in d.current_url.replace("www.", "") and 
-                              EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d)
-                )
-                current_url_str = driver.current_url # Update after successful navigation
-                logger.info(f"URL after recovery navigation: {current_url_str}")
-            except Exception as e_recov_nav:
-                logger.error(f"Failed to recover by navigating to base URL: {e_recov_nav}. Aborting new_chat.")
+                wait_long.until(EC.url_contains(domain_for_check))
+                current_url_str = driver.current_url
+            except Exception as e_recov:
+                logger.error(f"Failed to recover by navigating to base URL in new_chat: {str(e_recov).splitlines()[0]}. Aborting.")
                 return False
+        
+        logger.info(f"new_chat called. Current URL: {current_url_str}, Force new thread/prompt: {force_new_thread_and_init_prompt}")
         
         current_url_domain = urlparse(current_url_str).netloc.replace("www.", "")
         is_on_target_domain = (domain_for_check == current_url_domain)
-        
-        # Check if current URL is the base navigation URL (ignoring trailing slashes)
-        is_on_exact_base_nav_url = (nav_url.rstrip('/') == current_url_str.rstrip('/'))
 
-        if is_on_target_domain and not is_on_exact_base_nav_url:
-            logger.info(f"Already on a {domain_for_check} page ({current_url_str}), but not the base. Attempting to click 'New Thread'.")
-            if not new_thread_button_selector:
-                logger.warning(f"No 'new_thread_button_selector' configured for {chat_name_key}. Will attempt to navigate to base URL instead.")
-                driver.get(nav_url)
-                wait_long.until(lambda d: domain_for_check in d.current_url.replace("www.","") and EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d))
-            else:
-                try:
-                    new_thread_button = wait_short.until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, new_thread_button_selector))
-                    )
-                    new_thread_button.click()
-                    logger.info("'New Thread' button clicked successfully.")
-                    # Wait for UI to reset: input field is ready on *some* perplexity page.
-                    wait_long.until(
-                        lambda d: domain_for_check in d.current_url.replace("www.","") and
-                                  EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector))(d)
-                    )
-                    logger.info(f"UI transitioned after 'New Thread'. Current URL: {driver.current_url}")
-                except Exception as e_click:
-                    logger.warning(f"Error clicking 'New Thread' ('{new_thread_button_selector}'): {e_click}. Falling back to navigating to configured URL: {nav_url}")
-                    driver.get(nav_url)
-                    wait_long.until(lambda d: domain_for_check in d.current_url.replace("www.","") and EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d))
-        
-        elif not is_on_target_domain:
+        # --- Logic for handling page state based on force_new_thread_and_init_prompt ---
+        if not is_on_target_domain:
             logger.info(f"Not on {domain_for_check} domain. Navigating to configured URL: {nav_url}")
             driver.get(nav_url)
-            wait_long.until(lambda d: domain_for_check in d.current_url.replace("www.","") and EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d))
-        else: # Is on the target domain AND at the base nav_url (or close enough)
-             logger.info(f"Already on the target base URL or similar: {current_url_str}. Ensuring input is ready.")
-             wait_long.until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+            wait_long.until(lambda d: domain_for_check in d.current_url.replace("www.","") and 
+                                      EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))(d))
+            logger.info(f"Navigation to {nav_url} complete. Proceeding to send initial prompt.")
+            # If not on target domain, we always want to send initial prompt after navigating.
+            # This path implies force_new_thread_and_init_prompt should effectively be true for prompt sending.
+            return _send_initial_prompt_logic(driver, chat_config_resolved, context_text)
 
-
-        # Final check for input readiness before sending initial prompt
-        input_status_final = is_input_field_ready_and_no_verification(driver, chat_config_resolved, timeout=5)
-        if input_status_final != SUBMISSION_SUCCESS:
-            logger.error(f"Input field not ready or verification detected before sending initial prompt. Status: {input_status_final}")
-            return False
-
-        chat_config_resolved["last_screenshot_check"] = datetime.now()
-        logger.info(f"Successfully prepared new chat environment. Final URL: {driver.current_url}")
-
-        initial_prompt_content = chat_config_resolved.get("prompt_initial_content")
-        requires_initial_submission = chat_config_resolved.get("requires_initial_submission", True) # Default to True
-
-        if initial_prompt_content:
-            logger.info("Sending initial prompt to the chat...")
-            submission_status = send_to_chat(initial_prompt_content, chat_config_resolved, submit=requires_initial_submission)
-            if submission_status == SUBMISSION_SUCCESS:
-                logger.info(f"Initial prompt processed successfully (submit={requires_initial_submission}).")
-                return True
-            else:
-                logger.error(f"Failed to send/submit initial prompt. Status: {submission_status}")
-                return False
-        else:
-            logger.warning("No initial prompt content found in configuration. New chat considered ready without initial prompt.")
-            return True # Ready, but no initial prompt sent
+        elif force_new_thread_and_init_prompt:
+            logger.info(f"Force new thread is TRUE. Current URL: {current_url_str}. Will attempt to start fresh.")
+            is_on_exact_base_nav_url = (nav_url.rstrip('/') == current_url_str.rstrip('/'))
             
+            if not is_on_exact_base_nav_url and new_thread_button_selector:
+                logger.info(f"On {domain_for_check} but not base URL. Clicking 'New Thread'.")
+                try:
+                    new_thread_button = wait_long.until(EC.element_to_be_clickable((By.CSS_SELECTOR, new_thread_button_selector)))
+                    new_thread_button.click()
+                    wait_long.until(lambda d: EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector))(d) and 
+                                              nav_url.rstrip('/') in d.current_url.rstrip('/')) # Wait for base URL and input
+                    logger.info(f"UI transitioned after 'New Thread'. Current URL: {driver.current_url}")
+                except Exception as e_click:
+                    logger.warning(f"Error clicking 'New Thread': {str(e_click).splitlines()[0]}. Navigating to base URL as fallback.")
+                    driver.get(nav_url)
+                    wait_long.until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+            elif not is_on_exact_base_nav_url and not new_thread_button_selector:
+                 logger.info(f"On {domain_for_check} but not base URL, and no new thread button. Navigating to base URL.")
+                 driver.get(nav_url)
+                 wait_long.until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+            else: # Already on base URL, just ensure input is ready
+                 logger.info(f"Already on base URL. Ensuring input is ready for initial prompt.")
+                 wait_long.until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+
+            time.sleep(0.75) # Settle time
+            logger.info("Additional delay complete after page stabilization for forced new thread.")
+            return _send_initial_prompt_logic(driver, chat_config_resolved, context_text)
+
+        else: # On target domain, but force_new_thread_and_init_prompt is FALSE (app startup case)
+            logger.info(f"Already on {domain_for_check} domain (URL: {current_url_str}). Not forcing new thread or initial prompt as per request.")
+            # Just ensure the config is set up with the driver and last_screenshot_check
+            chat_config_resolved["last_screenshot_check"] = datetime.now()
+            # We can do a quick check for input field presence for logging, but don't fail if not immediately found.
+            try:
+                WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector)))
+                logger.info("Input field detected on current page.")
+            except TimeoutException:
+                logger.info("Input field not immediately detected on current page (might be a results page without input). This is OK for startup.")
+            return True # Successfully connected, user can manually start new thread.
+
     except WebDriverException as e_wd:
-        logger.error(f"WebDriverException in new_chat ({chat_name_key}): {e_wd}", exc_info=True)
+        logger.error(f"WebDriverException in new_chat ({chat_name_key}): {str(e_wd).splitlines()[0]}", exc_info=False)
         return False
     except Exception as e:
-        logger.error(f"Unexpected error initializing chat in new_chat ({chat_name_key}): {e}", exc_info=True)
+        logger.error(f"Unexpected error in new_chat ({chat_name_key}): {str(e).splitlines()[0]}", exc_info=True)
         return False
 
 def _get_input_element(driver: webdriver.Chrome, input_css_selector: str, timeout: int = 5) -> Optional[WebElement]:
@@ -443,34 +439,40 @@ def _populate_input_field(driver: webdriver.Chrome, element: WebElement, content
     """Populates the input field using configured method and verifies."""
     input_method = chat_config.get("input_method", "clipboard").lower()
     modifier_key = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
-    success = False
-
     try:
+        element.click() 
+        time.sleep(0.2)
         if input_method == "clipboard":
             pyperclip.copy(content)
             logger.info(f"Content (len: {len(content)}) copied to clipboard.")
-            element.click() 
-            time.sleep(0.2) # Increased delay before paste
             ActionChains(driver).key_down(modifier_key).send_keys('v').key_up(modifier_key).perform()
-            time.sleep(0.5) # Increased delay after paste
-            success = True
-        elif input_method == "send_keys":
-            element.click() 
-            time.sleep(0.1)
-            chunk_size = 500 
-            for i in range(0, len(content), chunk_size):
-                chunk = content[i:i+chunk_size]
-                element.send_keys(chunk)
-                time.sleep(0.1) # Slightly increased delay between chunks
-            logger.info(f"Content (len: {len(content)}) sent via send_keys.")
-            time.sleep(0.3) # Increased pause after sending all chunks
-            success = True
+            time.sleep(0.5)
+
+        elif input_method == "send_keys":            
+            # --- NEW LOGIC for handling newlines correctly ---
+            # Split the content into lines to handle newlines properly.
+            lines = content.splitlines() # Use splitlines() to handle \n and \r\n
+            num_lines = len(lines)
+
+            for i, line in enumerate(lines):
+                element.send_keys(line)
+                
+                # If it's not the last line, send Shift+Enter to create a newline.
+                # The final submission ENTER is handled by the main send_to_chat function.
+                if i < num_lines - 1:
+                    ActionChains(driver).key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT).perform()
+                    # A tiny pause can help with stability after a newline action.
+                    time.sleep(0.02) 
+            # --- END of new logic ---
+
+            logger.info(f"Content (len: {len(content)}) sent via send_keys with Shift+Enter for newlines.")
+        
         else:
             logger.error(f"Unsupported input_method: {input_method}. Cannot populate field.")
             return False
 
-        # Verification (simplified for brevity, use your detailed one if needed)
-        time.sleep(0.2) # Allow UI to update after paste/send_keys
+        # Verification logic remains the same
+        time.sleep(0.2)
         current_value_from_field = ""
         tag_name_verify = element.tag_name.lower()
         if tag_name_verify == 'textarea': current_value_from_field = element.get_attribute('value')
@@ -483,28 +485,27 @@ def _populate_input_field(driver: webdriver.Chrome, element: WebElement, content
             logger.info("Field value matches expected content.")
         else:
             logger.warning(f"Field value mismatch. Expected len: {len(normalized_prompt_content)}, Got len: {len(normalized_current_value)}.")
-            # Add more detailed logging if needed as before
+        
+        return True    
 
-        return success # Based on successful action, not perfect verification match
-    
-    except pyperclip.PyperclipException as e_clip: # Catch specific pyperclip errors
+    except pyperclip.PyperclipException as e_clip:
         logger.error(f"Pyperclip error during populate input: {e_clip}")
-        raise # Re-raise to be handled by the main send_to_chat retry loop as an operational failure
+        raise 
     except Exception as e_populate:
-        logger.error(f"Error populating input field: {e_populate}")
-        raise # Re-raise for the main retry loop
+        logger.error(f"Error populating input field: {e_populate}", exc_info=False)
+        raise
 
 def _final_explicit_clear_input(driver: webdriver.Chrome, input_css_selector: str):
     try:
         logger.info("Attempting final explicit clear of input field after submission.")
-        time.sleep(0.6) # Increased delay before attempting final clear
+        time.sleep(0.5) # Increased delay before attempting final clear
         input_el = WebDriverWait(driver, 3).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, input_css_selector))
         )
         _clear_input_element(driver, input_el) # Use the common clear helper
         
         # Verify clear
-        time.sleep(0.1)
+        # time.sleep(0.1)
         final_text_check = ""
         tag_name_final_check = input_el.tag_name.lower()
         if tag_name_final_check == 'textarea': final_text_check = input_el.get_attribute('value')
@@ -583,7 +584,7 @@ def send_to_chat(prompt_content: str, chat_config: Dict[str, Any], submit: bool 
                 raise TimeoutException("Failed to get clickable input element at start of attempt.")
 
             _clear_input_element(driver, current_input_element)
-            time.sleep(0.2)
+            time.sleep(0.1)
 
             if ENABLE_SCREENSHOTS and "last_screenshot_check" in chat_config:
                 last_check_time = chat_config["last_screenshot_check"]
@@ -667,7 +668,7 @@ def send_to_chat(prompt_content: str, chat_config: Dict[str, Any], submit: bool 
         except (StaleElementReferenceException, TimeoutException, NoSuchElementException) as e_retryable:
             logger.warning(f"{type(e_retryable).__name__} in send_to_chat attempt {retry_count + 1}/{max_retries}: {e_retryable.msg if hasattr(e_retryable, 'msg') else str(e_retryable).splitlines()[0]}. Retrying.")
             retry_count += 1
-            time.sleep(1.5 + retry_count) 
+            time.sleep(1 + retry_count) 
             if retry_count >= max_retries:
                 logger.error(f"Max retries reached due to {type(e_retryable).__name__}.")
                 final_status_check = is_input_field_ready_and_no_verification(driver, chat_config, timeout=1)
