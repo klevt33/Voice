@@ -1,1 +1,16 @@
-*/
+# Virtual Environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Log files
+*.log
+
+# Downloaded Models Folder
+faster_whisper_models/
+
+# VS Code settings
+.vscode/

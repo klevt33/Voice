@@ -114,7 +114,7 @@ def transcription_thread(audio_queue: queue.Queue,
                         cleaned_text = transcript_text.strip()
 
                         # Check if the text should be sent to the queue
-                        if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10: # Likely fast_whisper hallucination...
+                        if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10: # Likely faster_whisper hallucination...
                             logger.info(f"TRANSCRIBED (Not Sent): {cleaned_text}")
                         else:
                             full_transcript = f"{source_prefix} {cleaned_text}"

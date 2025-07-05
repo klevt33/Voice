@@ -1,0 +1,16 @@
+# This file lists the high-level application dependencies.
+# PyTorch must be installed manually using a specific CUDA index-url.
+# ctranslate2 automatically detects the CUDA version during 'pip install'.
+
+# To install PyTorch run:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Pinned by torch==2.5.1+cu121. This is a critical dependency for PyTorch.
+sympy==1.13.1
+
+faster-whisper
+ctranslate2
+pyaudio
+selenium
+pyperclip
+PyGetWindow

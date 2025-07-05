@@ -1,81 +1,153 @@
-# Whisper Mic
-This repo is based on the work done [here](https://github.com/openai/whisper) by OpenAI.  This repo allows you use use a mic as demo. This repo copies some of the README from the original project.
+# Audio Transcription Processor
 
-## Video Tutorial
+## 1. Project Overview
 
-The latest video tutorial for this repo can be seen [here](https://youtu.be/S58MGCU7Wgg)
+The Audio Transcription Processor is a real-time assistance tool designed to empower users in technical discussions. It captures audio from two separate microphone sources ([ME] for the user, [OTHERS] for conversation partners), transcribes the speech to text in real-time, and displays the snippets in a user-friendly interface.
 
-An older video tutorial for this repo can be seen [here](https://www.youtube.com/watch?v=nwPaRSlDSaY)
+The user can then select relevant snippets, add supplementary text context, and submit the compiled information to an AI chat service (like Perplexity or ChatGPT) for analysis, summarization, or to generate technical insights. The entire workflow is designed to be seamless, providing a "digital expert" that listens to the conversation and provides actionable intelligence on demand.
 
-### Professional Assistance
+## 2. Core Features
 
-If are in need of paid professional help, that is available through this [email](mailto:blakecmallory@gmail.com)
+-   **Dual-Microphone Real-Time Transcription:** Captures and transcribes audio simultaneously from two distinct sources, labeling them `[ME]` and `[OTHERS]`.
+-   **GPU-Accelerated Transcription:** Leverages `faster-whisper` and an NVIDIA GPU (via CUDA) for high-speed, accurate speech-to-text processing.
+-   **Interactive Tkinter UI:**
+    -   Displays transcribed snippets in a chronological list.
+    -   Allows for multi-selection, select/deselect all, and deletion of topics.
+    -   Provides a text field for adding custom context to submissions.
+    -   Features controls to start/stop listening and to manage the AI chat session.
+-   **Seamless Browser Automation:**
+    -   Integrates with a running instance of Google Chrome using Selenium via a remote debugging port.
+    -   Navigates and interacts with AI chat websites automatically.
+-   **Multi-AI Chat Support:**
+    -   Easily configurable to work with different AI chat services (e.g., Perplexity, ChatGPT).
+    -   Configuration is centralized in `config.py`, allowing for different URLs, CSS selectors, and input methods (`clipboard` paste vs. `send_keys`).
+-   **Advanced Prompting System:**
+    -   Uses an `prompt_init.txt` for a one-time system initialization prompt at the start of a session.
+    -   Uses a `prompt_msg.txt` to prepend a task-specific directive to every subsequent submission of topics.
+-   **Robust Session Management:**
+    -   Intelligently detects if the browser is already on the target AI chat site.
+    -   Provides a "New Thread" button in the UI to start a fresh conversation at any time, optionally sending along context from the UI.
+-   **Error Handling:** Includes logic to detect when an AI chat page might be waiting for human verification and preserves user input if a submission fails.
 
-## Setup
+## 3. Architecture & Technology Stack
 
-Now a pip package!
+-   **Backend Language:** Python
+-   **UI Framework:** Tkinter
+-   **Audio Capture:** PyAudio
+-   **Real-Time Transcription:** `faster-whisper` (built on `CTranslate2`)
+-   **Browser Automation:** `selenium`
+-   **Key Libraries:**
+    -   `pip-tools`: For generating reproducible `requirements.txt` files.
+    -   `torch`: For GPU acceleration.
+    -   `pyperclip`: For reliable text pasting into browser inputs.
+    -   `pygetwindow`: For bringing the browser window to the foreground.
 
-1. Create a venv of your choice.
-2. Run ```pip install whisper-mic```
+### Module Overview
 
-## Available models and languages
+-   `AudioToChat.py`: The main application entry point and orchestrator. Manages threads, UI, and browser interaction.
+-   `TopicsUI.py`: Defines the Tkinter graphical user interface class.
+-   `audio_handler.py`: Contains the logic for capturing audio from microphones.
+-   `transcription.py`: Manages the `faster-whisper` model and the transcription thread.
+-   `browser.py`: Handles all Selenium-based browser automation and communication with the AI service.
+-   `config.py`: Central configuration file for all user-specific settings.
+-   `prompts/`: Contains template files for initializing the AI chat and formatting submissions.
+-   `tests/`: Contains standalone utility and test scripts (e.g. `scan_mics.py`, `check_cuda.py`).
+-   `requirements.in` / `requirements.txt`: Dependency management files.
 
-There are five model sizes, four with English-only versions, offering speed and accuracy tradeoffs. Below are the names of the available models and their approximate memory requirements and relative speed. 
+## 4. Setup and Installation
 
+Follow these steps carefully to set up the project on a new Windows machine.
 
-|  Size  | Parameters | English-only model | Multilingual model | Required VRAM | Relative speed |
-|:------:|:----------:|:------------------:|:------------------:|:-------------:|:--------------:|
-|  tiny  |    39 M    |     `tiny.en`      |       `tiny`       |     ~1 GB     |      ~32x      |
-|  base  |    74 M    |     `base.en`      |       `base`       |     ~1 GB     |      ~16x      |
-| small  |   244 M    |     `small.en`     |      `small`       |     ~2 GB     |      ~6x       |
-| medium |   769 M    |    `medium.en`     |      `medium`      |     ~5 GB     |      ~2x       |
-| large  |   1550 M   |        N/A         |      `large`       |    ~10 GB     |       1x       |
+### Prerequisites
 
-For English-only applications, the `.en` models tend to perform better, especially for the `tiny.en` and `base.en` models. We observed that the difference becomes less significant for the `small.en` and `medium.en` models.
+1.  **NVIDIA GPU:** A CUDA-enabled NVIDIA graphics card is required for GPU acceleration.
+2.  **NVIDIA Driver:** Install the latest NVIDIA Game Ready or Studio Driver for your GPU.
+3.  **CUDA Toolkit:** Install the NVIDIA CUDA Toolkit. This project has been tested with version 12.x. You can download it from the [NVIDIA Developer website](https://developer.nvidia.com/cuda-toolkit).
+4.  **cuDNN Library:** Install the NVIDIA cuDNN library that matches your CUDA Toolkit version.
+    -   Download cuDNN from the [NVIDIA Developer website](https://developer.nvidia.com/cudnn).
+    -   **Crucial Step:** After unzipping the cuDNN folder, you must copy the `.dll` files from its `bin` directory and paste them directly into the `bin` directory of your main CUDA Toolkit installation (e.g., `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x\bin`).
+5.  **Python:** Install a stable, 64-bit version of Python (e.g., Python 3.12).
+    -   Download from the [official Python website](https://www.python.org/downloads/windows/).
+    -   During installation, ensure you check the box **"Add python.exe to PATH"**.
+6.  **Google Chrome:** The application is configured to automate Google Chrome.
 
-## Microphone Demo
+### Installation Steps
 
-You can use the model with a microphone using the ```whisper_mic``` program.  Use ```-h``` to see flag options.
+1.  **Clone the Repository:**
+    ```bash
+    git clone <your-repository-url>
+    cd <your-project-folder>
+    ```
 
-Some of the more important flags are the ```--model``` and ```--english``` flags.
+2.  **Create and Activate a Virtual Environment:**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate
+    ```
 
-## Transcribing To A File
+3.  **Install Dependencies (A Two-Step Process):**
+    This is the most critical part. PyTorch must be installed first with a specific command to enable CUDA support.
 
-Using the command: ```whisper_mic --loop --dictate``` will type the words you say on your active cursor.
+    **Step 3a: Install PyTorch for CUDA**
+    ```bash
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    ```
 
-## Usage In Other Projects
+    **Step 3b: Install Other Dependencies from `requirements.txt`**
+    If `requirements.txt` is not already present, generate it from `requirements.in`:
+    ```bash
+    pip install pip-tools
+    pip-compile requirements.in --output-file requirements.txt
+    ```
+    Then, install from the generated file:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-You can use this code in other projects rather than just use it for a demo.  You can do this with the ```listen``` method.
+4.  **Browser Setup:**
+    You must launch an instance of Google Chrome with remote debugging enabled.
+    -   Create a shortcut for Chrome.
+    -   Right-click the shortcut -> Properties.
+    -   In the "Target" field, add the following flag after `chrome.exe"`, separated by a space:
+        `--remote-debugging-port=9222`
+    -   Example Target: `"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222`
+    -   Use this shortcut to launch Chrome before starting the application.
 
-```python
-from whisper_mic import WhisperMic
+## 5. Configuration
 
-mic = WhisperMic()
-result = mic.listen()
-print(result)
-```
+Before running the application, customize `config.py` for your specific setup:
 
-Check out what the possible arguments are by looking at the ```cli.py``` file
+-   **`CHAT`**: Set to the AI service you want to use (e.g., `"Perplexity"` or `"ChatGPT"`).
+-   **`DLL_PATHS`**: **Crucial.** Ensure the paths in this list point to the `bin` directory of your installed CUDA Toolkit version (e.g., `r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin"`).
+-   **`MIC_INDEX_ME` & `MIC_INDEX_OTHERS`**: Set the correct device indices for your microphones. You may need a separate script to list PyAudio devices to find the correct numbers.
+-   **`SCREENSHOT_FOLDER`**: Update this path to a valid folder on your machine where screenshots are saved.
+-   **`CHATS` Dictionary**: To add a new AI, create a new entry in this dictionary with its URL, prompt files, and the correct CSS selectors for its UI elements.
 
-## Troubleshooting
+Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are present and contain your desired system prompts.
 
-If you are having issues, try the following:
-```
-sudo apt install portaudio19-dev python3-pyaudio
-```
+## 6. Usage
 
-## Contributing
+1.  Launch Google Chrome using the special shortcut with remote debugging enabled.
+2.  Activate your virtual environment: `.venv\Scripts\activate`
+3.  Run the main application script:
+    ```bash
+    python AudioToChat.py
+    ```
+4.  The Tkinter UI will appear. Use the "Listen" toggle to start and stop audio capture.
+5.  As you and others speak, transcribed topics will appear in the list.
+6.  Click on topics to select them. The full text of the last-selected topic appears at the bottom.
+7.  Use the "Submit Selected" or "Submit All" buttons to send topics (and any text in the "Context" field) to the configured AI chat.
+8.  Use the "New Thread" button to start a fresh conversation with the AI, optionally including any text from the "Context" field.
 
-Some ideas that you can add are:
-1. Supporting different implementations of Whisper
-2. Adding additional optional functionality.
-3. Add tests
+## 7. Troubleshooting
 
-## License
-
-The model weights of Whisper are released under the MIT License. See their repo for more information.
-
-This code under this repo is under the MIT license.  See [LICENSE](LICENSE) for further details.
-
-## Thanks
-Until recently, access to high performing speech to text models was only available through paid serviecs.  With this release, I am excited for the many applications that will come.
+-   **GPU Not Detected (`Using device: cpu` in logs):**
+    1.  This is almost always an environment issue.
+    2.  Verify the `DLL_PATHS` in `config.py` are correct for your CUDA version.
+    3.  Confirm you copied the **cuDNN** DLLs into the CUDA `bin` folder.
+    4.  Ensure you followed the two-step dependency installation, installing `torch` with the `--index-url` command *first* in a clean environment.
+-   **Microphone Not Working:**
+    -   The most common issue is incorrect device indices in `config.py`. Run a script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
+-   **Browser Automation Fails:**
+    -   Ensure Chrome was started with the `--remote-debugging-port=9222` flag.
+    -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.
