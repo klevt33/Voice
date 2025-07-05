@@ -50,8 +50,6 @@ The user can then select relevant snippets, add supplementary text context, and 
 -   `transcription.py`: Manages the `faster-whisper` model and the transcription thread.
 -   `browser.py`: Handles all Selenium-based browser automation and communication with the AI service.
 -   `config.py`: Central configuration file for all user-specific settings.
--   `prompts/`: Contains template files for initializing the AI chat and formatting submissions.
--   `tests/`: Contains standalone utility and test scripts (e.g. `scan_mics.py`, `check_cuda.py`).
 -   `requirements.in` / `requirements.txt`: Dependency management files.
 
 ## 4. Setup and Installation
@@ -150,4 +148,4 @@ Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are p
     -   The most common issue is incorrect device indices in `config.py`. Run a script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
 -   **Browser Automation Fails:**
     -   Ensure Chrome was started with the `--remote-debugging-port=9222` flag.
-    -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.
+    -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.Update 
