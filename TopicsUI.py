@@ -51,6 +51,14 @@ class TopicProcessor:
         self.queue_thread.start()
         
         self.root.after(100, self.update_ui)
+
+    def on_auto_submit_change(self, selected_mode: str):
+        logger.info(f"UI Auto-Submit mode changed to: {selected_mode}")
+        if self.app_controller and hasattr(self.app_controller, 'set_auto_submit_mode'):
+            self.app_controller.set_auto_submit_mode(selected_mode)
+        else:
+            logger.error("App controller not available to set auto-submit mode.")
+            self.update_browser_status("error", "Error: Controller not found for auto-submit.")
     
     def create_widgets(self):
         main_frame = ttk.Frame(self.root, padding="10")
@@ -75,6 +83,21 @@ class TopicProcessor:
         # --- RIGHT BUTTONS FRAME (Listen toggle and New Thread) ---
         right_buttons_frame = ttk.Frame(top_button_area_frame)
         right_buttons_frame.pack(side=tk.RIGHT, anchor=tk.E) # Anchor to East (right)
+
+        # Auto-Submit Dropdown
+        auto_submit_frame = ttk.Frame(right_buttons_frame)
+        auto_submit_frame.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(auto_submit_frame, text="Auto-Submit:").pack(side=tk.LEFT)
+        self.auto_submit_var = tk.StringVar(value="Off")
+        self.auto_submit_options = ["Off", "Others", "All"]
+        auto_submit_menu = ttk.OptionMenu(
+            auto_submit_frame,
+            self.auto_submit_var,
+            self.auto_submit_options[0],
+            *self.auto_submit_options,
+            command=self.on_auto_submit_change
+        )
+        auto_submit_menu.pack(side=tk.LEFT)
 
         # Order: New Thread button first, then Listen toggle
         ttk.Button(right_buttons_frame, text="New Thread", command=self.request_new_ai_thread_ui).pack(side=tk.LEFT, padx=(0, 5)) 

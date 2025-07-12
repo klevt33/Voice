@@ -50,7 +50,9 @@ CHATS = {
         "submit_button_selector": "button[aria-label='Submit']",
         "attach_files_button_selector": "button[aria-label='Attach files']",
         "file_input_selector_after_attach": "input[type='file']",
-        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']"
+        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']",
+        "chat_response_selector": "[data-testid*='conversation-turn-'] .text-message",
+        "generation_error_text": "Something went wrong"
     },
     "ChatGPT": {
         "url": "https://chatgpt.com/",
@@ -66,7 +68,9 @@ CHATS = {
         "attach_files_button_selector": "[id='upload-file-btn']", 
         "file_input_selector_after_attach": "input[type='file']",
         # The "New chat" button in the top left is a link to the base URL. This is a very stable selector.
-        "new_thread_button_selector": "a[href='/']" 
+        "new_thread_button_selector": "a[data-testid='create-new-chat-button']",
+        "chat_response_selector": "[data-testid*='conversation-turn-'] .text-message",
+        "generation_error_text": "Something went wrong"
     }
 }
 

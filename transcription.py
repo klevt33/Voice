@@ -8,6 +8,8 @@ import logging
 from typing import Dict
 from faster_whisper import WhisperModel
 import os
+from datetime import datetime
+from TopicsUI import Topic
 from config import WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER, LANGUAGE, BEAM_SIZE
 
 # Configure logger for this module
@@ -31,9 +33,10 @@ def get_whisper_model(model_name: str, device: str, compute_type: str) -> Whispe
         logger.info(f"Using cached WhisperModel instance: {model_name}")
     return _model_cache[cache_key]
 
-def transcription_thread(audio_queue: queue.Queue, 
+def transcription_thread(app_controller,
+                         audio_queue: queue.Queue, 
                          run_threads_ref: Dict[str, bool], 
-                         ui_queue: queue.Queue) -> None:  # Change to ui_queue
+                         ui_queue: queue.Queue) -> None:
     """Thread that processes audio segments and converts speech to text using faster_whisper"""
     logger.info(f"Initializing faster_whisper ({WHISPER_MODEL} model)...")
     
@@ -117,12 +120,35 @@ def transcription_thread(audio_queue: queue.Queue,
                         if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10: # Likely faster_whisper hallucination...
                             logger.info(f"TRANSCRIBED (Not Sent): {cleaned_text}")
                         else:
-                            full_transcript = f"{source_prefix} {cleaned_text}"
-                            # Print the partial transcript with source prefix
-                            logger.info(f"TRANSCRIBED (Sent): {full_transcript[:48]}..." if len(full_transcript) > 48 else f"TRANSCRIBED (Sent): {full_transcript}")
+                            # Create a Topic object
+                            topic = Topic(text=cleaned_text, timestamp=datetime.now(), source=audio_segment.source)
                             
-                            # Add to UI queue instead of browser queue
-                            ui_queue.put(full_transcript)
+                            # Get current auto-submit mode
+                            auto_submit_mode = app_controller.auto_submit_mode
+                            
+                            # Determine destination based on auto-submit mode
+                            should_auto_submit = (
+                                auto_submit_mode == "All" or
+                                (auto_submit_mode == "Others" and topic.source == "OTHERS")
+                            )
+                            
+                            if should_auto_submit:
+                                # Route to browser
+                                submission_content = f"[{topic.source}] {topic.text}"
+                                browser_payload = {
+                                    'content': submission_content,
+                                    'topic_objects': [topic]
+                                }
+                                if app_controller.browser_manager:
+                                    app_controller.browser_manager.browser_queue.put(browser_payload)
+                                    logger.info(f"AUTO-SUBMIT to browser: {submission_content[:50]}...")
+                                else:
+                                    logger.warning("Cannot auto-submit, browser_manager not available.")
+                            else:
+                                # Route to UI
+                                full_transcript = f"[{topic.source}] {cleaned_text}"
+                                logger.info(f"TRANSCRIBED (Sent to UI): {full_transcript[:48]}...")
+                                ui_queue.put(full_transcript)
                 
                 audio_queue.task_done()
                 processing_time = time.time() - start_time

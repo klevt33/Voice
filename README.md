@@ -15,6 +15,10 @@ The user can then select relevant snippets, add supplementary text context, and 
     -   Allows for multi-selection, select/deselect all, and deletion of topics.
     -   Provides a text field for adding custom context to submissions.
     -   Features controls to start/stop listening and to manage the AI chat session.
+-   **Auto-Submit Mode:**
+    -   **Off:** Default manual mode.
+    -   **Others:** Automatically sends transcriptions from the `[OTHERS]` source to the AI.
+    -   **All:** Automatically sends all transcriptions to the AI.
 -   **Seamless Browser Automation:**
     -   Integrates with a running instance of Google Chrome using Selenium via a remote debugging port.
     -   Navigates and interacts with AI chat websites automatically.
@@ -136,6 +140,7 @@ Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are p
 6.  Click on topics to select them. The full text of the last-selected topic appears at the bottom.
 7.  Use the "Submit Selected" or "Submit All" buttons to send topics (and any text in the "Context" field) to the configured AI chat.
 8.  Use the "New Thread" button to start a fresh conversation with the AI, optionally including any text from the "Context" field.
+9.  Use the "Auto-Submit" dropdown to change the submission behavior.
 
 ## 7. Troubleshooting
 
@@ -148,4 +153,4 @@ Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are p
     -   The most common issue is incorrect device indices in `config.py`. Run a script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
 -   **Browser Automation Fails:**
     -   Ensure Chrome was started with the `--remote-debugging-port=9222` flag.
-    -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.Update 
+    -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.Update

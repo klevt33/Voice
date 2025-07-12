@@ -23,40 +23,61 @@ CORE COMPETENCIES:
 * Global Team Leadership, Project/Program Management, Agile/SCRUM, CI/CD & DevOps
 
 EXPERIENCE HIGHLIGHTS:
-(Condensed for prompt clarity)
-* Sr. Solutions Architect, Perficient (2024 – Present): Solution Architect & Product Owner for enterprise projects (Power Platform, D365, Azure). Lead pre-sales for Fabric, Copilot Studio & Azure AI. Architected AI procurement analytics solution (Azure OpenAI, AI Search, Fabric) boosting success from 67% to 93%. Led UiPath to Power Automate RPA migration. Developed Power Platform CoE strategy.
-* Sr. Manager / Manager, Infor (2013 – 2024): Led team of 12, managed $28M+ client revenue. Architected custom CRM on Power Platform. Designed automations (Power Platform, APIs). Developed SQL & Power Query financial audit solution reclaiming $800K+. Participated in Salesforce CRM pilot.
-* Program Manager / Implementation Consultant, Certpoint Europe (2005 – 2013): Managed LMS projects for Toyota, L’Oréal, UN. Developed solution architecture for complex deployments.
+
+* Sr. Solutions Architect, Perficient (2024 – Present):
+  - Serve as Solution Architect & Product Owner for enterprise projects on Power Platform, D365, and Azure, leading multi-shore teams of up to 20.
+  - Lead pre-sales for Power Platform, Power BI, Fabric, Copilot Studio, and Azure AI.
+  - Architected and delivered an AI procurement analytics solution using Azure OpenAI, AI Search, and Fabric, boosting success rates from 67% to 93%.
+  - Led an RPA migration from UiPath to Power Automate for a global energy company.
+  - Developed Power Platform CoE strategy for a leading building materials manufacturer.
+  - Spearhead D365 Sales implementation and on-prem to cloud CRM migration.
+
+* Sr. Manager / Manager, Infor (2013 – 2024):
+  - Led a team of 12, managing $28M+ in client revenue, meeting NRR and margin goals.
+  - Architected and implemented a custom CRM on Power Platform (Dataverse, Model/Canvas Apps, Power Automate, Power BI, Custom APIs).
+  - Designed automation solutions using Power Platform, Power Automate, and APIs.
+  - Developed a financial data audit solution using SQL & Power Query, reclaiming $800K+.
+  - Participated in requirements gathering and pilot of Salesforce CRM.
+  - Oversaw implementation of Azure AI chatbots and mobile app prototypes.
+
+* Program Manager / Implementation Consultant, Certpoint Europe (2005 – 2013):
+  - Managed LMS implementation projects for top-tier clients like Toyota, L’Oréal, and the UN.
+  - Developed solution architecture for complex deployments and ERP integrations.
 
 TECHNICAL EXPERTISE: Azure, AWS, Azure DevOps, M365, D365 CE, Power Platform, Power Apps, Power BI, Microsoft Fabric, RPA (Power Automate, UiPath), SharePoint, Salesforce, SQL, .NET/C#, Python, JavaScript.
 
-CERTIFICATIONS & EDUCATION: MBA, MIS; BS, Applied Math; Certs: Power Platform Solution Architect Expert, Power Platform Developer, Azure AI Engineer, Fabric Analytics Engineer, PMP, Salesforce Admin, AWS Cloud Practitioner.
+CERTIFICATIONS & EDUCATION:
+* MBA, Management Information Systems
+* BS, Applied Mathematics
+* Certs: Power Platform Solution Architect Expert, Power Platform Developer, Azure AI Engineer, Fabric Analytics Engineer, PMP, Salesforce Admin, AWS Cloud Practitioner.
 
 --------------------------------------------------
 PRIMARY CONTEXT: TARGET JOB DESCRIPTION (FLORIDA POWER & LIGHT)
 --------------------------------------------------
 ROLE: Enterprise Architect (reports to Director of Enterprise Architecture).
 
-SUMMARY: Strategic leadership role, "head of architecture" for business units. Drive enterprise-wide architecture strategies.
+SUMMARY: A strategic leadership position acting as the "head of architecture" for one or more business units. Key driver for developing and implementing enterprise-wide architecture strategies aligned with business goals.
 
 KEY RESPONSIBILITIES:
-* Lead EA standards, guidelines, principles.
-* Define strategic roadmaps with stakeholders.
-* Oversee architecture blueprints and models.
-* Ensure IT solution alignment with business goals.
-* Lead and mentor architects.
-* Assess and modernize existing systems.
-* Engage executives on EA vision.
-* Establish governance frameworks.
-* Evaluate emerging technologies.
-* Mitigate architectural risks.
+* Lead the development, review, and implementation of enterprise architecture (EA) standards, guidelines, and principles.
+* Collaborate with business and technology stakeholders to define strategic roadmaps.
+* Oversee the creation of architecture blueprints and models.
+* Ensure IT solutions align with business goals.
+* Lead and mentor a team of architects.
+* Assess existing IT systems and recommend modernization/optimization.
+* Engage with executives to communicate EA vision and strategy.
+* Establish and maintain governance frameworks.
+* Evaluate and select emerging technologies for business innovation.
+* Identify and mitigate architectural risks.
+
+REQUIRED QUALIFICATIONS: Bachelor's or Equivalent Experience, 6+ years of experience.
 
 --------------------------------------------------
 PRIMARY CONTEXT: MY NARRATIVE & FRAMING
 --------------------------------------------------
-My Opening Statement: "I’ve been in enterprise tech and architecture for over 15 years, mostly in consulting, leading projects on CRM, ERP, AI, and automation platforms. At Perficient, I'm a Senior Solutions Architect on Power Platform, Azure AI, and Dynamics. I enjoy connecting business strategy to technical execution. I'm now looking for a focused role where I can go deep within a single organization, which is what brought me to FPL."
+My Opening Statement: "I’ve been working in enterprise technology and architecture for over 15 years, mostly in consulting, leading delivery and architecture for large-scale CRM, ERP, AI, and automation platforms. At Perficient, I'm a Senior Solutions Architect focused on Power Platform, Azure AI, and Dynamics. I enjoy connecting business strategy with technical execution. I recently led a project using Azure OpenAI and Fabric to improve procurement analytics, for example. I'm now looking for a more focused role where I can go deep within a single organization and contribute long-term, which is what brought me to FPL."
 
-Why I'm Interested in FPL: "The FPL opportunity aligns with my goal to do enterprise-scale, long-term architecture work, moving from consulting to an internal leadership role. I was impressed with FPL when you were a client of mine at Infor. The scale and complexity of FPL’s operations, where reliability and innovation are critical, is exactly the kind of challenge I’m looking for."
+Why I'm Interested in FPL: "While I'm happy at Perficient, the FPL opportunity aligns with my goal to do enterprise-scale, long-term architecture work, moving from consulting to an internal leadership role. I was also impressed with FPL when you were a client of mine at Infor. The scale and complexity of FPL’s operations, where reliability and innovation are critical, is exactly the kind of challenge I’m looking for."
 
 --------------------------------------------------
 Your Core Task & Analysis Directives

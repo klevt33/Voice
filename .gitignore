@@ -14,3 +14,6 @@ faster_whisper_models/
 
 # VS Code settings
 .vscode/
+
+# Gemini CLI memory file
+GEMINI.md

@@ -254,7 +254,12 @@ class BrowserManager:
                     return final_status if final_status != SUBMISSION_SUCCESS else SUBMISSION_FAILED_INPUT_UNAVAILABLE
                 time.sleep(1 + attempt)
             except Exception as e:
-                logger.error(f"Unexpected error in send_to_chat attempt {attempt + 1}: {e}", exc_info=True)
+                if "AI generation error detected" in str(e):
+                    # This was our specific error from _check_for_response_error.
+                    # This is a definitive failure state, no retry needed.
+                    return SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED # Use this status to indicate a hard stop
+                
+                logger.error(f"Unexpected error in send_to_chat attempt {attempt + 1}: {e}", exc_info=False) # Keep logs clean
                 if attempt + 1 >= max_retries:
                     logger.error(f"Max retries reached due to unexpected error.")
                     return SUBMISSION_FAILED_OTHER
@@ -273,12 +278,42 @@ class BrowserManager:
                 logger.warning("Failed to upload some screenshots during send_to_chat.")
         self.chat_config["last_screenshot_check"] = datetime.now()
 
+    def _check_for_response_error(self) -> bool:
+        """Checks the last AI response for known error text."""
+        response_selector = self.chat_config.get("chat_response_selector")
+        error_text = self.chat_config.get("generation_error_text")
+
+        if not response_selector or not error_text:
+            return False # Cannot check if config is missing
+
+        try:
+            # Find all response elements and get the last one
+            response_elements = self.driver.find_elements(By.CSS_SELECTOR, response_selector)
+            if not response_elements:
+                return False # No response elements found
+
+            last_response_text = response_elements[-1].text
+            if error_text.lower() in last_response_text.lower():
+                logger.error(f"Detected AI generation error text: '{error_text}' in last response.")
+                return True
+                
+        except (NoSuchElementException, StaleElementReferenceException):
+            # If the element isn't there or is stale, it's not the error message we're looking for.
+            return False
+        except Exception as e:
+            logger.warning(f"Could not check for response error due to unexpected exception: {e}")
+            return False
+            
+        return False
+
     def _submit_input(self, input_element: WebElement):
         """Handles the final action of submitting the content."""
         logger.info("Submitting the prompt via ENTER key.")
         submit_button_selector = self.chat_config.get("submit_button_selector")
+        submission_dispatched = False
         try:
             input_element.send_keys(Keys.ENTER)
+            submission_dispatched = True
             logger.info("ENTER key sent for submission.")
         except Exception as e_submit_enter:
             logger.error(f"Error sending ENTER key: {e_submit_enter}. Attempting submit button click.")
@@ -286,6 +321,7 @@ class BrowserManager:
                 try:
                     submit_btn = WebDriverWait(self.driver, 3).until(EC.element_to_be_clickable((By.CSS_SELECTOR, submit_button_selector)))
                     submit_btn.click()
+                    submission_dispatched = True
                     logger.info("Submit button clicked successfully.")
                 except Exception as e_click_submit_btn:
                     logger.error(f"Failed to click submit button: {e_click_submit_btn}")
@@ -293,6 +329,18 @@ class BrowserManager:
             else:
                 raise # Re-raise to fail the attempt
 
+        if not submission_dispatched:
+             return # Exit if no submission action could be taken
+
+        # --- NEW LOGIC: Check for response error after submission ---
+        # A short delay to allow the response to begin generating
+        time.sleep(1.0)
+        if self._check_for_response_error():
+            # The error was found, so we raise an exception that send_to_chat can catch
+            # and turn into the correct SUBMISSION_FAILED status.
+            raise Exception("AI generation error detected in response.")
+        # --- END NEW LOGIC ---
+        
         try:
             WebDriverWait(self.driver, 15).until(
                 lambda d: self._check_submission_processed_condition()
@@ -503,39 +551,82 @@ class BrowserManager:
                 self.comm_thread.join(timeout=5)
             logger.info("Browser communication thread shut down.")
 
+    def is_ready_for_new_submission(self) -> bool:
+        """
+        Checks if the browser's input field is available and ready for a new submission.
+        This is a non-blocking check.
+        """
+        if not self.driver:
+            return False
+        
+        # Use the existing robust check but with a very short timeout to make it non-blocking
+        status = self._is_input_field_ready_and_no_verification(timeout=0.1)
+        return status == SUBMISSION_SUCCESS
+
     def _browser_communication_loop(self):
         """The main loop for the browser communication thread."""
-        logger.info("Starting browser communication loop")
+        logger.info("Starting browser communication loop with batch processing.")
         while self.run_threads_ref["active"]:
             try:
-                item = self.browser_queue.get(timeout=1)
-                content = item["content"]
-                topic_objects = item["topic_objects"]
+                # 1. Wait for the browser to be ready
+                while not self.is_ready_for_new_submission():
+                    if not self.run_threads_ref["active"]:
+                        logger.info("Browser loop shutting down while waiting for browser readiness.")
+                        return
+                    time.sleep(0.5) # Poll every 500ms
                 
-                logger.info(f"RECEIVED FOR BROWSER: {content[:60]}...")
+                # 2. Instantly drain all items from the queue
+                items_to_process = []
+                try:
+                    while True:
+                        items_to_process.append(self.browser_queue.get_nowait())
+                except queue.Empty:
+                    pass # The queue is now empty
 
-                if content:
-                    message_prompt = self.chat_config.get("prompt_message_content", "").strip()
-                    full_content = f"{message_prompt}\n\n{content}" if message_prompt else content
+                # 3. If the temporary list is not empty, process the batch
+                if items_to_process:
+                    logger.info(f"Processing a batch of {len(items_to_process)} items from browser queue.")
                     
-                    submission_status = self.send_to_chat(full_content, submit=True)
+                    # 4. Combine content and topic objects
+                    combined_content = "\n".join(item['content'] for item in items_to_process if item.get('content'))
+                    combined_topic_objects = [topic for item in items_to_process for topic in item.get('topic_objects', [])]
 
-                    if submission_status == SUBMISSION_SUCCESS:
-                        logger.info("Message batch submitted successfully.")
+                    if combined_content:
+                        # 5. Prepend the prompt message
+                        message_prompt = self.chat_config.get("prompt_message_content", "").strip()
+                        full_content = f"{message_prompt}\n\n{combined_content}" if message_prompt else combined_content
+                        
+                        # 6. Call send_to_chat only once
+                        submission_status = self.send_to_chat(full_content, submit=True)
+
+                        if submission_status == SUBMISSION_SUCCESS:
+                            logger.info("Message batch submitted successfully.")
+                        else:
+                            logger.error(f"Failed to submit message batch. Status: {submission_status}")
+                        
+                        # 7. Pass the submission status and combined list to the UI
+                        self.ui_update_callback(
+                            submission_status,
+                            combined_topic_objects if submission_status == SUBMISSION_SUCCESS else []
+                        )
                     else:
-                        logger.error(f"Failed to submit message. Status: {submission_status}")
-                    
-                    self.ui_update_callback(
-                        submission_status,
-                        topic_objects if submission_status == SUBMISSION_SUCCESS else []
-                    )
-                self.browser_queue.task_done()
-            except queue.Empty:
-                continue
+                        logger.warning("Batch processing triggered, but no content found in items.")
+
+                    # Mark all tasks as done
+                    for _ in items_to_process:
+                        self.browser_queue.task_done()
+                else:
+                    # If no items were found, just sleep briefly before checking again
+                    time.sleep(0.1)
+
             except Exception as e:
                 logger.error(f"Critical error in browser communication loop: {e}", exc_info=True)
+                # Notify UI of a general failure
                 self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
+                # Wait a bit before retrying to avoid spamming logs on persistent errors
                 time.sleep(5)
+
+        logger.info("Browser communication loop has exited.")
 
 # Standalone utility function
 def load_single_chat_prompt(chat_name: str, chat_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:

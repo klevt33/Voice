@@ -47,6 +47,7 @@ class AudioToChat:
         self.audio = None
         self.topic_processor: Optional[TopicProcessor] = None
         self.browser_manager: Optional[BrowserManager] = None
+        self.auto_submit_mode = "Off"
         
         # Queues for inter-thread communication
         self.audio_queue = queue.Queue()
@@ -78,6 +79,13 @@ class AudioToChat:
     def stop_listening(self):
         logger.info("Stopping microphone listening")
         self.run_threads_ref["listening"] = False
+
+    def set_auto_submit_mode(self, mode: str):
+        if mode in ["Off", "Others", "All"]:
+            self.auto_submit_mode = mode
+            logger.info(f"Auto-submit mode set to: {mode}")
+        else:
+            logger.warning(f"Attempted to set invalid auto-submit mode: {mode}")
         
     def submit_topics(self, content_text: str, selected_topic_objects: List[Topic]):
         if self.browser_manager:
@@ -281,7 +289,7 @@ class AudioToChat:
         transcriber = threading.Thread(
             name="Transcriber",
             target=transcription_thread, 
-            args=(self.audio_queue, self.run_threads_ref, self.ui_queue)
+            args=(self, self.audio_queue, self.run_threads_ref, self.ui_queue)
         )
         transcriber.daemon = True
         self.threads.append(transcriber)
