@@ -137,7 +137,7 @@ def transcription_thread(app_controller,
                                 submission_content = f"[{topic.source}] {topic.text}"
                                 browser_payload = {
                                     'content': submission_content,
-                                    'topic_objects': [topic]
+                                    'topic_objects': []
                                 }
                                 if app_controller.browser_manager:
                                     app_controller.browser_manager.browser_queue.put(browser_payload)

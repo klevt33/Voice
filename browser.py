@@ -159,16 +159,13 @@ class BrowserManager:
             return False
 
     def _send_initial_prompt(self, context_text: Optional[str] = None) -> bool:
-        """Helper to construct and send the initial prompt message."""
+        """
+        Constructs and sends the initial prompt message as a single, self-contained action.
+        This method no longer relies on the removed `send_to_chat`.
+        """
         logger.info("Entering _send_initial_prompt.")
-        input_status_final = self._is_input_field_ready_and_no_verification(timeout=5)
-        if input_status_final != SUBMISSION_SUCCESS:
-            logger.error(f"Input field not ready for initial prompt. Status: {input_status_final}")
-            return False
-
-        self.chat_config["last_screenshot_check"] = datetime.now()
-        logger.info(f"Chat environment ready for initial prompt. Final URL: {self.driver.current_url}")
-
+        
+        # 1. Construct the final initial prompt content
         initial_prompt_from_file = self.chat_config.get("prompt_initial_content", "")
         final_initial_prompt_to_send = initial_prompt_from_file
 
@@ -178,104 +175,78 @@ class BrowserManager:
                 final_initial_prompt_to_send = f"{final_initial_prompt_to_send}\n\n[CONTEXT] {stripped_context}"
             else:
                 final_initial_prompt_to_send = f"[CONTEXT] {stripped_context}"
-            logger.info(f"Context from UI incorporated into initial message.")
+            logger.info("Context from UI incorporated into initial message.")
         
-        requires_initial_submission = self.chat_config.get("requires_initial_submission", True)
+        if not final_initial_prompt_to_send or not final_initial_prompt_to_send.strip():
+            logger.warning("No initial prompt content and no UI context. No initial message will be sent.")
+            return True # Environment is ready, just nothing to send.
 
-        if final_initial_prompt_to_send and final_initial_prompt_to_send.strip():
-            logger.info(f"Sending initial message to the chat...")
-            submission_status = self.send_to_chat(final_initial_prompt_to_send, submit=requires_initial_submission)
+        # 2. Check if the browser is ready for us to start typing
+        input_status_final = self._is_input_field_ready_and_no_verification(timeout=10)
+        if input_status_final != SUBMISSION_SUCCESS:
+            logger.error(f"Input field not ready for initial prompt. Status: {input_status_final}")
+            return False
+
+        self.chat_config["last_screenshot_check"] = datetime.now()
+        logger.info(f"Chat environment ready for initial prompt. Final URL: {self.driver.current_url}")
+
+        # 3. Perform the submission using the same helpers as the main loop
+        try:
+            logger.info(f"Sending initial message (length {len(final_initial_prompt_to_send)}) to the chat...")
             
-            if submission_status == SUBMISSION_SUCCESS:
-                logger.info(f"Initial message processed successfully (submit={requires_initial_submission}).")
-                return True
+            # Get the input element
+            input_element = self._get_input_element()
+            if not input_element:
+                raise Exception("Could not get input element for initial prompt.")
+
+            # Populate the field with the entire initial prompt
+            self._populate_field(input_element, final_initial_prompt_to_send, append=False)
+            
+            requires_initial_submission = self.chat_config.get("requires_initial_submission", True)
+            if requires_initial_submission:
+                # Wait for the submit button to become clickable after populating the field
+                submit_button_selector = self.chat_config.get("submit_button_selector")
+                WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, submit_button_selector))
+                )
+                # Submit the content
+                self._submit_input(input_element)
             else:
-                logger.error(f"Failed to send/submit initial message. Status: {submission_status}")
-                return False
-        else:
-            logger.warning("No initial prompt content and no UI context. No initial message sent.")
+                logger.info("Initial prompt populated without submission as per configuration.")
+
+            logger.info("Initial message processed successfully.")
             return True
 
-    def send_to_chat(self, prompt_content: str, submit: bool = False) -> str:
-        """
-        The main method for sending content to the chat input field, with retries.
-        """
-        if not prompt_content:
-            logger.warning("Empty prompt content, not sending")
-            return SUBMISSION_NO_CONTENT
-
-        if not self.driver:
-            logger.error("Driver missing for send_to_chat.")
-            return SUBMISSION_FAILED_OTHER
-            
-        input_css_selector = self.chat_config.get("css_selector_input")
-        if not input_css_selector:
-            logger.error("css_selector_input missing from chat_config for send_to_chat.")
-            return SUBMISSION_FAILED_OTHER
-
-        input_status = self._is_input_field_ready_and_no_verification(timeout=5)
-        if input_status != SUBMISSION_SUCCESS:
-            logger.warning(f"send_to_chat: Pre-submission check failed: {input_status}. Aborting.")
-            return input_status
-
-        max_retries = 2
-        for attempt in range(max_retries):
-            logger.info(f"send_to_chat attempt {attempt + 1}/{max_retries}")
-            try:
-                input_element = self._get_input_element()
-                if not input_element:
-                    status_check = self._is_input_field_ready_and_no_verification(timeout=1)
-                    if status_check == SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED: return status_check
-                    raise TimeoutException("Failed to get clickable input element at start of attempt.")
-
-                self._clear_input_element(input_element)
-                time.sleep(0.1)
-
-                if ENABLE_SCREENSHOTS and "last_screenshot_check" in self.chat_config:
-                    self._handle_screenshot_upload()
-                
-                if not self._populate_input_field(input_element, prompt_content):
-                    raise Exception("Failed to populate input field.")
-
-                if submit:
-                    self._submit_input(input_element)
-                    self.chat_config["last_screenshot_check"] = datetime.now()
-                    return SUBMISSION_SUCCESS
-                else: # Not submitting
-                    logger.info("Content placed into field without submission.")
-                    self.chat_config["last_screenshot_check"] = datetime.now()
-                    return SUBMISSION_SUCCESS
-
-            except (StaleElementReferenceException, TimeoutException, NoSuchElementException) as e:
-                logger.warning(f"{type(e).__name__} in send_to_chat attempt {attempt + 1}. Retrying.")
-                if attempt + 1 >= max_retries:
-                    logger.error(f"Max retries reached due to {type(e).__name__}.")
-                    final_status = self._is_input_field_ready_and_no_verification(timeout=1)
-                    return final_status if final_status != SUBMISSION_SUCCESS else SUBMISSION_FAILED_INPUT_UNAVAILABLE
-                time.sleep(1 + attempt)
-            except Exception as e:
-                if "AI generation error detected" in str(e):
-                    # This was our specific error from _check_for_response_error.
-                    # This is a definitive failure state, no retry needed.
-                    return SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED # Use this status to indicate a hard stop
-                
-                logger.error(f"Unexpected error in send_to_chat attempt {attempt + 1}: {e}", exc_info=False) # Keep logs clean
-                if attempt + 1 >= max_retries:
-                    logger.error(f"Max retries reached due to unexpected error.")
-                    return SUBMISSION_FAILED_OTHER
-                time.sleep(1 + attempt)
+        except Exception as e:
+            logger.error(f"Failed to send/submit initial message. Error: {e}", exc_info=True)
+            # You might want to trigger a UI status update here if possible
+            # For now, returning False will propagate the failure.
+            return False
         
-        logger.error(f"send_to_chat failed after {max_retries} retries.")
-        return SUBMISSION_FAILED_OTHER
-
     def _handle_screenshot_upload(self):
-        """Checks for and uploads new screenshots."""
-        last_check_time = self.chat_config.get("last_screenshot_check", datetime.now())
-        new_screenshots = self._get_new_screenshots(SCREENSHOT_FOLDER, last_check_time)
-        if new_screenshots:
-            logger.info(f"Found {len(new_screenshots)} new screenshots to upload.")
-            if not self._upload_screenshots(new_screenshots):
+        """
+        Encapsulates the full logic for checking for, uploading,
+        and updating the timestamp for screenshots.
+        """
+        if not ENABLE_SCREENSHOTS or "last_screenshot_check" not in self.chat_config:
+            return # Exit if screenshots are disabled or not configured
+
+        logger.debug("Checking for new screenshots...")
+        last_check_time = self.chat_config["last_screenshot_check"]
+        
+        # NOTE: Assumes _get_new_screenshots is defined in this file or imported.
+        new_screenshots_list = self._get_new_screenshots(SCREENSHOT_FOLDER, last_check_time)
+        
+        if new_screenshots_list:
+            logger.info(f"Found {len(new_screenshots_list)} new screenshots to upload.")
+            # NOTE: Assumes _upload_screenshots is defined in this file or imported.
+            upload_was_successful = self._upload_screenshots(new_screenshots_list) 
+            if not upload_was_successful:
                 logger.warning("Failed to upload some screenshots during send_to_chat.")
+        
+        # CRUCIAL: Always update the timestamp after checking, before the submission.
+        # This ensures that whether we found files or not, we won't look for them again
+        # in the next check until after this submission is complete.
         self.chat_config["last_screenshot_check"] = datetime.now()
 
     def _check_for_response_error(self) -> bool:
@@ -308,60 +279,44 @@ class BrowserManager:
 
     def _submit_input(self, input_element: WebElement):
         """Handles the final action of submitting the content."""
-        logger.info("Submitting the prompt via ENTER key.")
-        submit_button_selector = self.chat_config.get("submit_button_selector")
-        submission_dispatched = False
+        logger.info("Submitting the prompt...")
         try:
+            # For modern UIs, sending ENTER to the input element is most reliable.
             input_element.send_keys(Keys.ENTER)
-            submission_dispatched = True
             logger.info("ENTER key sent for submission.")
-        except Exception as e_submit_enter:
-            logger.error(f"Error sending ENTER key: {e_submit_enter}. Attempting submit button click.")
-            if submit_button_selector:
-                try:
-                    submit_btn = WebDriverWait(self.driver, 3).until(EC.element_to_be_clickable((By.CSS_SELECTOR, submit_button_selector)))
-                    submit_btn.click()
-                    submission_dispatched = True
-                    logger.info("Submit button clicked successfully.")
-                except Exception as e_click_submit_btn:
-                    logger.error(f"Failed to click submit button: {e_click_submit_btn}")
-                    raise  # Re-raise to fail the attempt
-            else:
-                raise # Re-raise to fail the attempt
 
-        if not submission_dispatched:
-             return # Exit if no submission action could be taken
-
-        # --- NEW LOGIC: Check for response error after submission ---
-        # A short delay to allow the response to begin generating
-        time.sleep(1.0)
-        if self._check_for_response_error():
-            # The error was found, so we raise an exception that send_to_chat can catch
-            # and turn into the correct SUBMISSION_FAILED status.
-            raise Exception("AI generation error detected in response.")
-        # --- END NEW LOGIC ---
+            # After sending ENTER, perform post-submission checks
+            time.sleep(1.0) # Give the AI a moment to start responding
+            if self._check_for_response_error():
+                raise Exception("AI generation error detected in response.")
+            
+            WebDriverWait(self.driver, 15).until(lambda d: self._check_submission_processed_condition())
+            logger.info("Post-submission: AI processing started or input field cleared.")
         
-        try:
-            WebDriverWait(self.driver, 15).until(
-                lambda d: self._check_submission_processed_condition()
-            )
-            logger.info("Post-submission: AI processing or input field clear/submit inactive.")
-        except TimeoutException as e:
-            logger.warning(f"Timeout during post-submission confirmation wait: {e.msg}. Assuming submission was initiated.")
-        
-        self._final_explicit_clear_input()
+        except TimeoutException:
+            logger.warning("Timeout during post-submission confirmation wait. Assuming submission was initiated.")
+        finally:
+            # Always attempt to clear the input field for a clean state.
+            self._final_explicit_clear_input()
 
     def _is_input_field_ready_and_no_verification(self, timeout: int = 3) -> str:
         """Checks if the input field is ready and no human verification is detected."""
         input_css_selector = self.chat_config.get("css_selector_input")
+        submit_button_selector = self.chat_config.get("submit_button_selector")
         verification_selector = self.chat_config.get("human_verification_text_selector")
         verification_text = self.chat_config.get("human_verification_text_content", "").lower()
 
-        if not input_css_selector:
+        if not input_css_selector or not submit_button_selector:
             return SUBMISSION_FAILED_OTHER
 
         try:
-            WebDriverWait(self.driver, timeout).until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+            wait = WebDriverWait(self.driver, timeout)
+            # Wait for the input field to be clickable
+            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+            
+            # Wait for the submit button to be enabled
+            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, submit_button_selector)))
+
             if verification_selector and verification_text:
                 try:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, verification_selector)
@@ -543,88 +498,151 @@ class BrowserManager:
             logger.info("Browser communication thread started.")
 
     def stop_communication_thread(self):
-        """Stops the browser communication thread."""
-        if self.run_threads_ref["active"]:
+        """Signals the browser communication thread to stop and waits for it to exit."""
+        if self.run_threads_ref.get("active", False):
             logger.info("Stopping browser communication thread...")
-            self.run_threads_ref["active"] = False
-            if self.comm_thread:
+            self.run_threads_ref["active"] = False # Signal the loop to terminate
+            
+            if self.comm_thread and self.comm_thread.is_alive():
+                # The join() call waits for the thread to finish its current loop and exit.
+                # The loop's timeout on queue.get() ensures it won't block forever.
                 self.comm_thread.join(timeout=5)
-            logger.info("Browser communication thread shut down.")
-
-    def is_ready_for_new_submission(self) -> bool:
-        """
-        Checks if the browser's input field is available and ready for a new submission.
-        This is a non-blocking check.
-        """
+                if self.comm_thread.is_alive():
+                    logger.warning("Browser communication thread did not exit within the timeout.")
+                else:
+                    logger.info("Browser communication thread shut down successfully.")
+            self.comm_thread = None # Clean up the thread object
+        else:
+            logger.info("Browser communication thread was not active or already stopped.")
+ 
+    def _is_input_field_available(self) -> bool:
+        """Checks if the main input field is available and clickable."""
         if not self.driver:
             return False
         
-        # Use the existing robust check but with a very short timeout to make it non-blocking
-        status = self._is_input_field_ready_and_no_verification(timeout=0.1)
-        return status == SUBMISSION_SUCCESS
+        input_css_selector = self.chat_config.get("css_selector_input")
+        if not input_css_selector:
+            return False
+
+        try:
+            WebDriverWait(self.driver, 0.1).until(EC.element_to_be_clickable((By.CSS_SELECTOR, input_css_selector)))
+            return True
+        except TimeoutException:
+            return False
+        except Exception as e:
+            logger.error(f"Error checking for input field availability: {e}")
+            return False
+        
+    def _populate_field(self, element: WebElement, content: str):
+        """
+        Populates the input field by overwriting its content using the clipboard.
+        This is the single, fast method for all population actions.
+        """
+        # We always clear the element first for a predictable state.
+        self._clear_input_element(element)
+        
+        try:
+            # The only supported method is clipboard, which is fast and reliable.
+            pyperclip.copy(content)
+            modifier_key = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
+            
+            # A Select All (Ctrl+A) followed by a Paste (Ctrl+V) is a robust
+            # way to ensure the field content is exactly what we want.
+            ActionChains(self.driver).click(element).key_down(modifier_key).send_keys("a").key_up(modifier_key).perform()
+            time.sleep(0.05) # Small pause for stability
+            ActionChains(self.driver).key_down(modifier_key).send_keys("v").key_up(modifier_key).perform()
+            
+            time.sleep(0.2)
+            logger.debug(f"Clipboard paste complete. Total length={len(content)}")
+
+        except Exception as e:
+            logger.error(f"Error populating input field via clipboard: {e}", exc_info=True)
+            raise # Re-raise the exception to fail the current submission attempt.
 
     def _browser_communication_loop(self):
-        """The main loop for the browser communication thread."""
-        logger.info("Starting browser communication loop with batch processing.")
+        """
+        Main loop for browser interaction. Implements the 'Prime and Submit' logic.
+        """
+        logger.info("Starting browser communication loop with 'Prime and Submit' logic.")
         while self.run_threads_ref["active"]:
             try:
-                # 1. Wait for the browser to be ready
-                while not self.is_ready_for_new_submission():
-                    if not self.run_threads_ref["active"]:
-                        logger.info("Browser loop shutting down while waiting for browser readiness.")
-                        return
-                    time.sleep(0.5) # Poll every 500ms
+                # 1. GET WORK: Block until at least one item is in the queue.
+                first_item = self.browser_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+
+            all_items_in_batch = [first_item]
+            
+            try:
+                # 2. PRIME THE INPUT FIELD
+                logger.info("Work detected. Priming input field with 'Waiting...'")
+                input_element = self._get_input_element()
+                if not input_element:
+                    logger.error("Could not get input element to prime. Skipping batch.")
+                    self.browser_queue.task_done()
+                    continue
                 
-                # 2. Instantly drain all items from the queue
-                items_to_process = []
-                try:
-                    while True:
-                        items_to_process.append(self.browser_queue.get_nowait())
-                except queue.Empty:
-                    pass # The queue is now empty
+                self._populate_field(input_element, "Waiting...")
 
-                # 3. If the temporary list is not empty, process the batch
-                if items_to_process:
-                    logger.info(f"Processing a batch of {len(items_to_process)} items from browser queue.")
+                # 3. WAIT FOR TRUE READINESS (while draining the queue)
+                submit_button_selector = self.chat_config.get("submit_button_selector")
+                logger.info(f"Input primed. Waiting for submit button ('{submit_button_selector}') to become active...")
+                
+                is_ready = False
+                start_time = time.time()
+                while time.time() - start_time < 300: # 5-minute overall timeout
+                    try:
+                        if WebDriverWait(self.driver, 0.2).until(EC.element_to_be_clickable((By.CSS_SELECTOR, submit_button_selector))):
+                            is_ready = True
+                            break
+                    except TimeoutException:
+                        pass # Expected, continue polling.
                     
-                    # 4. Combine content and topic objects
-                    combined_content = "\n".join(item['content'] for item in items_to_process if item.get('content'))
-                    combined_topic_objects = [topic for item in items_to_process for topic in item.get('topic_objects', [])]
+                    while not self.browser_queue.empty():
+                        try:
+                            all_items_in_batch.append(self.browser_queue.get_nowait())
+                            logger.debug(f"Added item to batch while waiting. New size: {len(all_items_in_batch)}.")
+                        except queue.Empty:
+                            break
+                    
+                    if not self.run_threads_ref["active"]: return
 
-                    if combined_content:
-                        # 5. Prepend the prompt message
-                        message_prompt = self.chat_config.get("prompt_message_content", "").strip()
-                        full_content = f"{message_prompt}\n\n{combined_content}" if message_prompt else combined_content
-                        
-                        # 6. Call send_to_chat only once
-                        submission_status = self.send_to_chat(full_content, submit=True)
+                if not is_ready:
+                    logger.error("Timed out waiting for submit button. Aborting batch.")
+                    # Mark all items as done to clear them from the queue
+                    for _ in all_items_in_batch: self.browser_queue.task_done()
+                    continue
 
-                        if submission_status == SUBMISSION_SUCCESS:
-                            logger.info("Message batch submitted successfully.")
-                        else:
-                            logger.error(f"Failed to submit message batch. Status: {submission_status}")
-                        
-                        # 7. Pass the submission status and combined list to the UI
-                        self.ui_update_callback(
-                            submission_status,
-                            combined_topic_objects if submission_status == SUBMISSION_SUCCESS else []
-                        )
-                    else:
-                        logger.warning("Batch processing triggered, but no content found in items.")
+                logger.info("Submit button is now active. Browser is ready.")
 
-                    # Mark all tasks as done
-                    for _ in items_to_process:
-                        self.browser_queue.task_done()
+                # 4. HANDLE SCREENSHOTS
+                # This is the correct place to call the handler. After the browser
+                # is confirmed to be ready, but before we populate the final payload.
+                self._handle_screenshot_upload()
+
+                # 5. CONSTRUCT PAYLOAD & SUBMIT
+                logger.info(f"Processing a batch of {len(all_items_in_batch)} items.")
+                
+                message_prompt = self.chat_config.get("prompt_message_content", "").strip()
+                combined_topics_content = "\n".join(item['content'] for item in all_items_in_batch if item.get('content'))
+                final_payload = f"{message_prompt}\n\n{combined_topics_content}" if message_prompt else combined_topics_content
+                combined_topic_objects = [topic for item in all_items_in_batch for topic in item.get('topic_objects', [])]
+                
+                if final_payload.strip():
+                    # Overwrite the "Waiting..." text with the full, final payload.
+                    self._populate_field(input_element, final_payload)
+                    self._submit_input(input_element)
+                    self.ui_update_callback(SUBMISSION_SUCCESS, combined_topic_objects)
                 else:
-                    # If no items were found, just sleep briefly before checking again
-                    time.sleep(0.1)
+                    self.ui_update_callback(SUBMISSION_NO_CONTENT, combined_topic_objects)
 
             except Exception as e:
-                logger.error(f"Critical error in browser communication loop: {e}", exc_info=True)
-                # Notify UI of a general failure
+                logger.error(f"Failed to process and submit batch: {e}", exc_info=True)
                 self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
-                # Wait a bit before retrying to avoid spamming logs on persistent errors
-                time.sleep(5)
+
+            # Mark all items in the processed batch as done
+            for _ in all_items_in_batch:
+                self.browser_queue.task_done()
 
         logger.info("Browser communication loop has exited.")
 

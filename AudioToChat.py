@@ -117,24 +117,34 @@ class AudioToChat:
 
     def handle_exit(self):
         if not self.run_threads_ref["active"]:
+            # Prevent multiple shutdown calls
+            logger.info("Shutdown already in progress or completed.")
             return
 
         logger.info("Shutdown process started. Cleaning up resources...")
         
+        # 1. Signal all threads to stop their loops
         self.run_threads_ref["active"] = False
-        self.run_threads_ref["listening"] = False
+        self.run_threads_ref["listening"] = False # Ensure this is also signaled
         
+        # 2. Specifically stop the browser communication thread first.
+        #    This is its own managed thread, separate from the list in self.threads.
         if self.browser_manager:
             logger.info("Stopping browser communication...")
             self.browser_manager.stop_communication_thread()
 
-        logger.info("Waiting for threads to terminate...")
+        # 3. Now, wait for the other threads (recorders, transcriber) to finish.
+        logger.info("Waiting for audio and transcription threads to terminate...")
         for thread in self.threads:
             if thread.is_alive():
-                thread.join(timeout=10)
+                logger.info(f"Attempting to join thread: {thread.name}")
+                thread.join(timeout=5) # 5-second timeout per thread
+                if thread.is_alive():
+                    logger.warning(f"Thread {thread.name} did not terminate gracefully.")
         
-        logger.info("All threads joined or timed out.")
+        logger.info("All primary threads joined or timed out.")
 
+        # 4. Clean up global resources like PyAudio
         if self.audio:
             try:
                 logger.info("Terminating PyAudio...")
@@ -155,16 +165,13 @@ class AudioToChat:
         self.root.after(100, self.process_transcript_queue)
     
     def on_closing_ui_initiated(self):
+        """Handles the UI window closing event."""
         logger.info("UI window closing event triggered. Initiating full application shutdown...")
         self.handle_exit()
-
+        # After handling backend, destroy the UI if it's still there
         if self.root and self.root.winfo_exists():
-            try:
-                self.root.destroy()
-                logger.info("Tkinter root window destroyed after backend cleanup.")
-            except tk.TclError as e:
-                logger.warning(f"Error destroying Tkinter root window: {e}")
-        logger.info("Application shutdown sequence from UI complete.")
+            self.root.destroy()
+            logger.info("Tkinter root window destroyed.")
 
     def initialize_audio(self):
         try:
@@ -255,12 +262,20 @@ class AudioToChat:
             if not self.topic_processor: return
 
             if status == SUBMISSION_SUCCESS:
-                if successfully_submitted_topics:
+                # --- Only focus if it was a manual submission ---
+                is_manual_submission = bool(successfully_submitted_topics)
+
+                if is_manual_submission:
                     self.topic_processor.clear_successfully_submitted_topics(successfully_submitted_topics)
                     self.topic_processor.clear_full_text_display()
+                
                 self.topic_processor.update_browser_status("browser_ready", "Status: Topics submitted successfully.")
-                if self.browser_manager:
+                
+                if is_manual_submission and self.browser_manager:
+                    logger.info("Manual submission successful. Attempting to focus browser window.")
                     self.browser_manager.focus_browser_window()
+                else:
+                    logger.info("Auto-submission successful. Browser window will not be focused.")
             elif status == SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED:
                 self.topic_processor.update_browser_status("browser_human_verification", "AI: Verify Human! (Topics NOT Sent)")
             elif status == SUBMISSION_FAILED_INPUT_UNAVAILABLE:
