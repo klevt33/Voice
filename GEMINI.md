@@ -37,3 +37,26 @@ This file summarizes the project's architecture and functionality based on my an
 - `tests/check_cuda.py`: A script to verify the CUDA and cuDNN setup for GPU acceleration.
 - `tests/perplexity_selector_test.py`: A test script (as identified by the user).
 - `tests/scan_mics.py`: A standalone utility script to help users find the correct microphone indices.
+
+## Refactoring Opportunities
+
+Based on my analysis of the Python modules, here are the main refactoring opportunities to improve code simplicity and readability:
+
+### High-Impact Opportunities
+
+*   **`AudioToChat.py`**: The `AudioToChat` class acts as a "God Object," managing state, UI, audio, browser interactions, and threading all at once.
+    *   **Recommendation**: Decompose this class. Create a `StateManager` to hold shared state (like `run_threads_ref`), a `ServiceManager` to handle the lifecycle of audio and browser services, and keep `AudioToChat` as a lean orchestrator that connects these components. This would significantly clarify the flow of control and data.
+
+*   **`browser.py`**: The `BrowserManager` class is overly complex, handling everything from low-level Selenium commands to high-level application logic like the "Prime and Submit" loop and screenshot uploads.
+    *   **Recommendation**: Break down `BrowserManager`. Create a `BrowserDriver` class for basic browser setup and connection. Introduce a `ChatPage` class (or subclasses for each chat service) to encapsulate all page-specific logic like finding input fields, submitting text, and checking for errors. The `_browser_communication_loop` could become its own `SubmissionManager` class.
+
+*   **`TopicsUI.py`**: The `TopicProcessor` class mixes UI widget creation (`create_widgets`) with application logic and state management (`process_queue`, `submit_selected_topics`).
+    *   **Recommendation**: Separate the UI definition from the logic. Create a `UIView` class responsible only for building and laying out the `tkinter` widgets. The `TopicProcessor` would then become a `UIViewController` that handles user events, manages the topic list, and communicates with the main application controller, cleanly separating concerns.
+
+### Medium-Impact Opportunities
+
+*   **`transcription.py`**: The `transcription_thread` function contains complex routing logic that decides whether to send a transcript to the UI or the browser. This logic is tightly coupled to the `app_controller`.
+    *   **Recommendation**: Decouple this routing. The transcription thread should simply transcribe the audio and emit a `Topic` object. A separate `TopicRouter` or a method within the main `AudioToChat` controller should be responsible for inspecting the topic and the current `auto_submit_mode` to decide its destination.
+
+*   **`audio_handler.py`**: The `recording_thread` function is long and contains nested logic for detecting sound and then recording.
+    *   **Recommendation**: Simplify the function by extracting the sound detection loop into its own function (e.g., `wait_for_sound`) that returns once sound is detected. This would make the main recording loop more linear and easier to follow.

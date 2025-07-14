@@ -35,6 +35,8 @@ The user can then select relevant snippets, add supplementary text context, and 
 
 ## 3. Architecture & Technology Stack
 
+The application uses a modular, multi-threaded architecture designed for responsiveness and separation of concerns. A central orchestrator manages the lifecycle of various components, which communicate asynchronously using thread-safe queues.
+
 -   **Backend Language:** Python
 -   **UI Framework:** Tkinter
 -   **Audio Capture:** PyAudio
@@ -46,15 +48,23 @@ The user can then select relevant snippets, add supplementary text context, and 
     -   `pyperclip`: For reliable text pasting into browser inputs.
     -   `pygetwindow`: For bringing the browser window to the foreground.
 
-### Module Overview
+### Architectural Components
 
--   `AudioToChat.py`: The main application entry point and orchestrator. Manages threads, UI, and browser interaction.
--   `TopicsUI.py`: Defines the Tkinter graphical user interface class.
--   `audio_handler.py`: Contains the logic for capturing audio from microphones.
--   `transcription.py`: Manages the `faster-whisper` model and the transcription thread.
--   `browser.py`: Handles all Selenium-based browser automation and communication with the AI service.
--   `config.py`: Central configuration file for all user-specific settings.
--   `requirements.in` / `requirements.txt`: Dependency management files.
+-   **`AudioToChat.py` (Orchestrator):** The main application entry point. It initializes all components and manages the primary application lifecycle.
+-   **`managers.py`:**
+    -   `StateManager`: Holds shared application state (e.g., listening status, auto-submit mode).
+    -   `ServiceManager`: Manages the lifecycle of background services like audio and browser automation.
+-   **`TopicsUI.py` & `ui_view.py` (UI Layer):**
+    -   `UIController` (`TopicsUI.py`): Handles all UI logic and user interactions.
+    -   `UIView` (`ui_view.py`): Defines the layout and widgets of the Tkinter GUI.
+-   **`topic_router.py`:** Contains the `TopicRouter` class, which decides whether a transcribed topic should go to the UI or be auto-submitted to the browser.
+-   **`audio_handler.py`:** Contains the logic for capturing audio from microphones in dedicated threads.
+-   **`transcription.py`:** Manages the `faster-whisper` model and the transcription thread.
+-   **`browser.py` & `chat_page.py` (Browser Layer):**
+    -   `BrowserManager` (`browser.py`): High-level manager for the browser communication thread and submission queue.
+    -   `ChatPage` (`chat_page.py`): Encapsulates all low-level Selenium interactions with a specific chat website.
+-   **`config.py`:** Central configuration file for all user-specific settings (API keys, paths, selectors, etc.).
+-   **`requirements.in` / `requirements.txt`:** Dependency management files.
 
 ## 4. Setup and Installation
 

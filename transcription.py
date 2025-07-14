@@ -33,11 +33,13 @@ def get_whisper_model(model_name: str, device: str, compute_type: str) -> Whispe
         logger.info(f"Using cached WhisperModel instance: {model_name}")
     return _model_cache[cache_key]
 
-def transcription_thread(app_controller,
-                         audio_queue: queue.Queue, 
-                         run_threads_ref: Dict[str, bool], 
-                         ui_queue: queue.Queue) -> None:
-    """Thread that processes audio segments and converts speech to text using faster_whisper"""
+def transcription_thread(audio_queue: queue.Queue,
+                         transcribed_topics_queue: queue.Queue,
+                         run_threads_ref: Dict[str, bool]) -> None:
+    """
+    Thread that processes audio segments, converts speech to text,
+    and puts the resulting Topic object into a queue.
+    """
     logger.info(f"Initializing faster_whisper ({WHISPER_MODEL} model)...")
     
     # Determine device type
@@ -116,40 +118,15 @@ def transcription_thread(app_controller,
                         transcript_text = " ".join(segment.text for segment in segment_list)
                         cleaned_text = transcript_text.strip()
 
-                        # Check if the text should be sent to the queue
-                        if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10: # Likely faster_whisper hallucination...
-                            logger.info(f"TRANSCRIBED (Not Sent): {cleaned_text}")
+                        # Filter out likely hallucinations or junk
+                        if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:
+                            logger.info(f"TRANSCRIBED (Filtered Out): {cleaned_text}")
                         else:
-                            # Create a Topic object
+                            # Create a Topic object and queue it for the main app to route
                             topic = Topic(text=cleaned_text, timestamp=datetime.now(), source=audio_segment.source)
-                            
-                            # Get current auto-submit mode
-                            auto_submit_mode = app_controller.auto_submit_mode
-                            
-                            # Determine destination based on auto-submit mode
-                            should_auto_submit = (
-                                auto_submit_mode == "All" or
-                                (auto_submit_mode == "Others" and topic.source == "OTHERS")
-                            )
-                            
-                            if should_auto_submit:
-                                # Route to browser
-                                submission_content = f"[{topic.source}] {topic.text}"
-                                browser_payload = {
-                                    'content': submission_content,
-                                    'topic_objects': []
-                                }
-                                if app_controller.browser_manager:
-                                    app_controller.browser_manager.browser_queue.put(browser_payload)
-                                    logger.info(f"AUTO-SUBMIT to browser: {submission_content[:50]}...")
-                                else:
-                                    logger.warning("Cannot auto-submit, browser_manager not available.")
-                            else:
-                                # Route to UI
-                                full_transcript = f"[{topic.source}] {cleaned_text}"
-                                logger.info(f"TRANSCRIBED (Sent to UI): {full_transcript[:48]}...")
-                                ui_queue.put(full_transcript)
-                
+                            transcribed_topics_queue.put(topic)
+                            logger.info(f"TRANSCRIBED (Queued): [{topic.source}] {cleaned_text[:50]}...")
+
                 audio_queue.task_done()
                 processing_time = time.time() - start_time
                 stats["total_processing_time"] += processing_time
@@ -173,9 +150,10 @@ def transcription_thread(app_controller,
     
     # Print stats before exiting
     if stats["segments_processed"] > 0:
+        avg_time = stats["total_processing_time"] / stats["segments_processed"] if stats["segments_processed"] > 0 else 0
         logger.info(f"Transcription stats: processed {stats['segments_processed']} segments, "
                    f"{stats['empty_segments']} empty, {stats['errors']} errors, "
-                   f"avg time: {stats['total_processing_time']/stats['segments_processed']:.2f}s per segment")
+                   f"avg time: {avg_time:.2f}s per segment")
     
     # Clean up resources
     logger.info("Cleaning up transcription resources")
