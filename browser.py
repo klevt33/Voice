@@ -174,14 +174,17 @@ class BrowserManager:
                 if not self.chat_page:
                     raise Exception("ChatPage is not initialized.")
 
-                # 1. Prime the input field to enable the submit button
+                # 1. Focus the browser window to ensure it's active.
+                self.focus_browser_window()
+                
+                # 2. Prime the input field to enable the submit button
                 logger.info("Work detected. Priming input field with 'Waiting...' ")
                 if not self.chat_page.prime_input():
                     logger.error("Could not prime input field. Skipping batch.")
                     self.browser_queue.task_done()
                     continue
 
-                # 2. Wait for the site to be ready for submission
+                # 3. Wait for the site to be ready for submission
                 logger.info("Input primed. Waiting for submit button to become active...")
                 is_ready = False
                 start_time = time.time()
@@ -200,17 +203,17 @@ class BrowserManager:
 
                 logger.info("Submit button is now active. Browser is ready.")
 
-                # 3. Drain the queue to get all available items NOW that the browser is ready
+                # 4. Drain the queue to get all available items NOW that the browser is ready
                 while not self.browser_queue.empty():
                     try:
                         all_items_in_batch.append(self.browser_queue.get_nowait())
                     except queue.Empty:
                         break
 
-                # 4. Handle screenshots
+                # 5. Handle screenshots
                 self._handle_screenshot_upload()
 
-                # 5. Construct final payload and submit
+                # 6. Construct final payload and submit
                 logger.info(f"Processing a batch of {len(all_items_in_batch)} items.")
                 message_prompt = self.chat_config.get("prompt_message_content", "").strip()
                 combined_topics_content = "\n".join(item['content'] for item in all_items_in_batch if item.get('content'))

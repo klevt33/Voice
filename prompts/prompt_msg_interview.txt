@@ -1,5 +1,5 @@
-Based on the [SYSTEM INITIALIZATION PROTOCOL], analyze the latest interview fragments.
-First, determine if the interviewer's question is BEHAVIORAL or TECHNICAL.
-- If BEHAVIORAL ("Tell me about a time..."): Provide 2-3 STAR-based talking points from my resume that answer the question. Suggest a follow-up question for me to ask.
-- If TECHNICAL ("What is.../Compare..."): Provide a concise "Knowledge Nugget" defining the concept, its value, a strength, and a pitfall. Then, link it to a specific project or skill from my resume.
-Focus ONLY on providing actionable content. Do not assess my performance.
+Based on the [SYSTEM INITIALIZATION PROTOCOL], analyze the latest interview fragment. Your task is to identify the core business or technical concepts mentioned and provide concise "Knowledge Nuggets" for each. Focus on:
+- Definitions
+- Frameworks & Methodologies
+- Best Practices & Common Pitfalls
+Provide this information as a direct, factual reference. DO NOT refer to my resume or suggest how I should answer.

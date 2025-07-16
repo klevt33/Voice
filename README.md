@@ -55,8 +55,8 @@ The application uses a modular, multi-threaded architecture designed for respons
     -   `StateManager`: Holds shared application state (e.g., listening status, auto-submit mode).
     -   `ServiceManager`: Manages the lifecycle of background services like audio and browser automation.
 -   **`TopicsUI.py` & `ui_view.py` (UI Layer):**
-    -   `UIController` (`TopicsUI.py`): Handles all UI logic and user interactions.
-    -   `UIView` (`ui_view.py`): Defines the layout and widgets of the Tkinter GUI.
+    -   `UIController` (in `TopicsUI.py`): Handles all UI logic and user interactions.
+    -   `UIView` (in `ui_view.py`): Defines the layout and widgets of the Tkinter GUI.
 -   **`topic_router.py`:** Contains the `TopicRouter` class, which decides whether a transcribed topic should go to the UI or be auto-submitted to the browser.
 -   **`audio_handler.py`:** Contains the logic for capturing audio from microphones in dedicated threads.
 -   **`transcription.py`:** Manages the `faster-whisper` model and the transcription thread.
@@ -131,7 +131,7 @@ Before running the application, customize `config.py` for your specific setup:
 
 -   **`CHAT`**: Set to the AI service you want to use (e.g., `"Perplexity"` or `"ChatGPT"`).
 -   **`DLL_PATHS`**: **Crucial.** Ensure the paths in this list point to the `bin` directory of your installed CUDA Toolkit version (e.g., `r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin"`).
--   **`MIC_INDEX_ME` & `MIC_INDEX_OTHERS`**: Set the correct device indices for your microphones. You may need a separate script to list PyAudio devices to find the correct numbers.
+-   **`MIC_INDEX_ME` & `MIC_INDEX_OTHERS`**: Set the correct device indices for your microphones. You can use the `tests/scan_mics.py` script to list available audio devices and their indices.
 -   **`SCREENSHOT_FOLDER`**: Update this path to a valid folder on your machine where screenshots are saved.
 -   **`CHATS` Dictionary**: To add a new AI, create a new entry in this dictionary with its URL, prompt files, and the correct CSS selectors for its UI elements.
 
@@ -160,7 +160,7 @@ Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are p
     3.  Confirm you copied the **cuDNN** DLLs into the CUDA `bin` folder.
     4.  Ensure you followed the two-step dependency installation, installing `torch` with the `--index-url` command *first* in a clean environment.
 -   **Microphone Not Working:**
-    -   The most common issue is incorrect device indices in `config.py`. Run a script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
+    -   The most common issue is incorrect device indices in `config.py`. Run the `tests/scan_mics.py` script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
 -   **Browser Automation Fails:**
     -   Ensure Chrome was started with the `--remote-debugging-port=9222` flag.
     -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.Update
