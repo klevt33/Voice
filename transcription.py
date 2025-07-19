@@ -8,6 +8,7 @@ import logging
 from typing import Dict
 from faster_whisper import WhisperModel
 import os
+import re
 from datetime import datetime
 from TopicsUI import Topic
 from config import WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER, LANGUAGE, BEAM_SIZE
@@ -117,6 +118,9 @@ def transcription_thread(audio_queue: queue.Queue,
                         # Combine all segments into one continuous text
                         transcript_text = " ".join(segment.text for segment in segment_list)
                         cleaned_text = transcript_text.strip()
+                        
+                        # Replace multiple consecutive spaces with a single space
+                        cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
 
                         # Filter out likely hallucinations or junk
                         if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:

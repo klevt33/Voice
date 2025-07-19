@@ -9,7 +9,7 @@ The application is designed to be a "sidekick" during conversations, meetings, o
 **Core Features:**
 - **Dual Audio Source Capture:** Simultaneously records from a user's microphone and a system loopback audio device.
 - **Real-time Transcription:** Uses the `faster-whisper` library for efficient, high-quality speech-to-text conversion.
-- **Topic Management UI:** A `tkinter`-based GUI allows the user to view, select, and manage transcribed text segments (topics).
+- **Topic Management UI:** A `tkinter`-based GUI allows the user to view, select, and manage transcribed text segments (topics). Includes both copy-to-clipboard and submit-to-AI functionality.
 - **Browser Automation:** Integrates with a running instance of Google Chrome (in debug mode) using `selenium` to automate the submission of topics to AI chat websites.
 - **Auto-Submit Functionality:** Provides modes to automatically send transcriptions to the AI chat based on their source (e.g., automatically submit everything said by "OTHERS").
 
@@ -95,7 +95,15 @@ This decoupled, queue-based system ensures that each component can operate async
 6.  `AudioToChat` starts its `topic_processing_loop` to watch the `transcribed_topics_queue`.
 7.  The `tkinter` `root.mainloop()` is started, and the UI becomes visible and interactive.
 
-### 4.2. Browser Submission ("Prime and Submit")
+### 4.2. Copy to Clipboard Workflow
+This workflow allows users to copy topics for use in external applications without removing them from the UI.
+1.  User clicks "Copy Selected" or "Copy All" button in the UI.
+2.  `UIController` consolidates the selected/all topics with context (if present) into a formatted string.
+3.  The consolidated text is copied to the system clipboard using `pyperclip`.
+4.  Topics remain in the UI list (unlike submission which removes successfully submitted topics).
+5.  User receives status feedback confirming the copy operation.
+
+### 4.3. Browser Submission ("Prime and Submit")
 This is a critical workflow to handle websites where the submit button is disabled until text is entered.
 1.  A submission item is placed in the `browser_queue`.
 2.  The `_browser_communication_loop` wakes up and gets the item.

@@ -4,15 +4,15 @@ import pyaudio
 
 # DLL Paths
 DLL_PATHS = [
-    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
-    # r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
-    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
-    r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
+    r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
+    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
+    # r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
 ]
 
 # Audio configuration
 # MIC_INDEX_OTHERS = 8   # Voicemeeter Out B1 index
-MIC_INDEX_OTHERS = 7   # Voicemeeter Out B1 index
+MIC_INDEX_OTHERS = 5   # Voicemeeter Out B1 index
 MIC_INDEX_ME = 1       # My microphone index
 SAMPLE_RATE = 44100    # Audio sampling rate
 CHUNK_SIZE = 1024      # Buffer size for processing

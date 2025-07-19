@@ -6,6 +6,7 @@ import threading
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
+import pyperclip
 
 from ui_view import UIView
 
@@ -165,6 +166,24 @@ class UIController:
 
     def submit_all_topics(self):
         self.submit_selected_topics(select_all_override=True)
+
+    def copy_selected_topics(self, select_all_override=False):
+        context = self.view.context_text.get(1.0, tk.END).strip()
+        
+        selected_topic_objects = list(self.topics) if select_all_override else [t for t in self.topics if t.selected]
+        if not selected_topic_objects:
+            self.update_browser_status("warning", "Status: No topics to copy.")
+            return
+
+        messages = [f"[CONTEXT] {context}"] if context else []
+        messages.extend([f"[{t.source}] {t.text}" for t in selected_topic_objects])
+        
+        consolidated_text = "\n".join(messages)
+        pyperclip.copy(consolidated_text)
+        self.update_browser_status("success", f"Status: Copied {len(selected_topic_objects)} topics to clipboard.")
+
+    def copy_all_topics(self):
+        self.copy_selected_topics(select_all_override=True)
 
     def clear_successfully_submitted_topics(self, submitted_topics: List[Topic]):
         if not submitted_topics:

@@ -15,6 +15,7 @@ The user can then select relevant snippets, add supplementary text context, and 
     -   Allows for multi-selection, select/deselect all, and deletion of topics.
     -   Provides a text field for adding custom context to submissions.
     -   Features controls to start/stop listening and to manage the AI chat session.
+    -   **Copy functionality:** Copy selected or all topics to clipboard for use in external applications (topics remain in the list).
 -   **Auto-Submit Mode:**
     -   **Off:** Default manual mode.
     -   **Others:** Automatically sends transcriptions from the `[OTHERS]` source to the AI.
@@ -55,8 +56,8 @@ The application uses a modular, multi-threaded architecture designed for respons
     -   `StateManager`: Holds shared application state (e.g., listening status, auto-submit mode).
     -   `ServiceManager`: Manages the lifecycle of background services like audio and browser automation.
 -   **`TopicsUI.py` & `ui_view.py` (UI Layer):**
-    -   `UIController` (in `TopicsUI.py`): Handles all UI logic and user interactions.
-    -   `UIView` (in `ui_view.py`): Defines the layout and widgets of the Tkinter GUI.
+    -   `UIController` (`TopicsUI.py`): Handles all UI logic and user interactions.
+    -   `UIView` (`ui_view.py`): Defines the layout and widgets of the Tkinter GUI.
 -   **`topic_router.py`:** Contains the `TopicRouter` class, which decides whether a transcribed topic should go to the UI or be auto-submitted to the browser.
 -   **`audio_handler.py`:** Contains the logic for capturing audio from microphones in dedicated threads.
 -   **`transcription.py`:** Manages the `faster-whisper` model and the transcription thread.
@@ -131,7 +132,7 @@ Before running the application, customize `config.py` for your specific setup:
 
 -   **`CHAT`**: Set to the AI service you want to use (e.g., `"Perplexity"` or `"ChatGPT"`).
 -   **`DLL_PATHS`**: **Crucial.** Ensure the paths in this list point to the `bin` directory of your installed CUDA Toolkit version (e.g., `r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin"`).
--   **`MIC_INDEX_ME` & `MIC_INDEX_OTHERS`**: Set the correct device indices for your microphones. You can use the `tests/scan_mics.py` script to list available audio devices and their indices.
+-   **`MIC_INDEX_ME` & `MIC_INDEX_OTHERS`**: Set the correct device indices for your microphones. You may need a separate script to list PyAudio devices to find the correct numbers.
 -   **`SCREENSHOT_FOLDER`**: Update this path to a valid folder on your machine where screenshots are saved.
 -   **`CHATS` Dictionary**: To add a new AI, create a new entry in this dictionary with its URL, prompt files, and the correct CSS selectors for its UI elements.
 
@@ -148,9 +149,10 @@ Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are p
 4.  The Tkinter UI will appear. Use the "Listen" toggle to start and stop audio capture.
 5.  As you and others speak, transcribed topics will appear in the list.
 6.  Click on topics to select them. The full text of the last-selected topic appears at the bottom.
-7.  Use the "Submit Selected" or "Submit All" buttons to send topics (and any text in the "Context" field) to the configured AI chat.
-8.  Use the "New Thread" button to start a fresh conversation with the AI, optionally including any text from the "Context" field.
-9.  Use the "Auto-Submit" dropdown to change the submission behavior.
+7.  **Copy Topics:** Use the "Copy Selected" or "Copy All" buttons to copy topics (and any text in the "Context" field) to your clipboard for pasting into external applications. Topics remain in the list after copying.
+8.  **Submit Topics:** Use the "Submit Selected" or "Submit All" buttons to send topics (and any text in the "Context" field) to the configured AI chat. Successfully submitted topics are removed from the list.
+9.  Use the "New Thread" button to start a fresh conversation with the AI, optionally including any text from the "Context" field.
+10. Use the "Auto-Submit" dropdown to change the submission behavior.
 
 ## 7. Troubleshooting
 
@@ -160,7 +162,7 @@ Also, ensure your prompt files (`prompt_init.txt`, `prompt_msg.txt`, etc.) are p
     3.  Confirm you copied the **cuDNN** DLLs into the CUDA `bin` folder.
     4.  Ensure you followed the two-step dependency installation, installing `torch` with the `--index-url` command *first* in a clean environment.
 -   **Microphone Not Working:**
-    -   The most common issue is incorrect device indices in `config.py`. Run the `tests/scan_mics.py` script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
+    -   The most common issue is incorrect device indices in `config.py`. Run a script to list your PyAudio devices and find the correct numbers for your headset and your virtual audio cable (e.g., Voicemeeter).
 -   **Browser Automation Fails:**
     -   Ensure Chrome was started with the `--remote-debugging-port=9222` flag.
     -   Check that the CSS selectors in `config.py` for the target AI service are still valid, as websites update their structure frequently.Update

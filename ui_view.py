@@ -17,36 +17,47 @@ class UIView(ttk.Frame):
         self.create_widgets()
 
     def create_widgets(self):
-        # --- Main Frames ---
-        list_frame = ttk.LabelFrame(self, text="Topics", padding="5")
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        # Configure grid layout
+        self.grid_rowconfigure(0, weight=1)  # Topics area
+        self.grid_rowconfigure(1, weight=0)  # Full Topic Text
+        self.grid_rowconfigure(2, weight=0)  # Context
+        self.grid_rowconfigure(3, weight=0)  # Buttons
+        self.grid_rowconfigure(4, weight=0)  # Status
+        self.grid_columnconfigure(0, weight=1)
 
-        text_frame = ttk.LabelFrame(self, text="Full Topic Text", padding="5")
-        text_frame.pack(fill=tk.X, expand=False, pady=(0, 5))
+        # --- Main Frames using Grid ---
+        self.list_frame = ttk.LabelFrame(self, text="Topics", padding="5")
+        self.list_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 5))
 
-        context_frame = ttk.LabelFrame(self, text="Context", padding="5")
-        context_frame.pack(fill=tk.X, expand=False, pady=(0,5))
+        # Store references to frames for toggle functionality
+        self.text_frame = ttk.LabelFrame(self, text="Full Topic Text", padding="5")
+        self.text_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 5))
 
-        submit_buttons_main_frame = ttk.Frame(self)
-        submit_buttons_main_frame.pack(pady=5)
+        self.context_frame = ttk.LabelFrame(self, text="Context", padding="5")
+        self.context_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 5))
+
+        self.buttons_main_frame = ttk.Frame(self)
+        self.buttons_main_frame.grid(row=3, column=0, pady=5)
 
         status_bar_frame = ttk.Frame(self, relief=tk.SUNKEN, padding="2 2 2 2")
-        status_bar_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(5,0))
+        status_bar_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(5, 10))
 
         # --- List Frame Widgets ---
-        self._create_list_frame_widgets(list_frame)
+        self._create_list_frame_widgets(self.list_frame)
 
         # --- Full Text Widget ---
-        self.full_text = scrolledtext.ScrolledText(text_frame, wrap=tk.WORD, height=3, state="disabled")
+        self.full_text = scrolledtext.ScrolledText(self.text_frame, wrap=tk.WORD, height=3, state="disabled")
         self.full_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # --- Context Toggle (positioned at title level) ---
+        self._create_context_toggle_title_level()
 
         # --- Context Widget ---
-        self.context_text = scrolledtext.ScrolledText(context_frame, wrap=tk.WORD, height=2)
+        self.context_text = scrolledtext.ScrolledText(self.context_frame, wrap=tk.WORD, height=2)
         self.context_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # --- Submit Buttons ---
-        ttk.Button(submit_buttons_main_frame, text="Submit Selected", command=self.controller.submit_selected_topics).pack(side=tk.LEFT, padx=5)
-        ttk.Button(submit_buttons_main_frame, text="Submit All", command=self.controller.submit_all_topics).pack(side=tk.LEFT, padx=5)
+        # --- Copy and Submit Buttons ---
+        self._create_action_buttons(self.buttons_main_frame)
 
         # --- Status Bar ---
         self._create_status_bar(status_bar_frame)
@@ -137,6 +148,46 @@ class UIView(ttk.Frame):
         toggle_button.bind("<Button-1>", lambda e: variable.set(not variable.get()))
         variable.trace_add("write", update_toggle)
         return frame
+
+    def _create_context_toggle_title_level(self):
+        """Create context toggle positioned at the title level of the text frame"""
+        self.show_context_var = tk.BooleanVar(value=True)
+        self.show_context_var.trace_add("write", self._toggle_context_visibility)
+        
+        context_checkbox = ttk.Checkbutton(
+            self.text_frame, 
+            text="Show Context", 
+            variable=self.show_context_var
+        )
+        context_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-24)
+
+    def _toggle_context_visibility(self, *args):
+        """Toggle between showing/hiding context field and adjusting full text height"""
+        show_context = self.show_context_var.get()
+        
+        if show_context:
+            # Mode 1: Show context field
+            self.context_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 5))
+            # Topics area gets weight, Full Topic Text stays minimal
+            self.grid_rowconfigure(0, weight=1)  # Topics - expandable
+            self.grid_rowconfigure(1, weight=0)  # Full Topic Text - fixed height
+            self.full_text.config(height=3)
+        else:
+            # Mode 2: Hide context, give most space to Full Topic Text
+            self.context_frame.grid_remove()
+            # Give Topics minimal weight, Full Topic Text gets most weight
+            self.grid_rowconfigure(0, weight=1)  # Topics - minimal expansion to maintain size
+            self.grid_rowconfigure(1, weight=10)  # Full Topic Text - gets most of the extra space
+            self.full_text.config(height=8)  # Larger height to use the extra space
+
+    def _create_action_buttons(self, parent):
+        # Copy buttons (left side)
+        ttk.Button(parent, text="Copy Selected", command=self.controller.copy_selected_topics).pack(side=tk.LEFT, padx=5)
+        ttk.Button(parent, text="Copy All", command=self.controller.copy_all_topics).pack(side=tk.LEFT, padx=(0, 20))
+        
+        # Submit buttons (right side)
+        ttk.Button(parent, text="Submit Selected", command=self.controller.submit_selected_topics).pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Button(parent, text="Submit All", command=self.controller.submit_all_topics).pack(side=tk.LEFT, padx=5)
 
     def update_browser_status(self, status_key: str, custom_message: Optional[str] = None):
         color, default_message = self.status_colors.get(status_key, ("gray", "Status: Unknown"))
