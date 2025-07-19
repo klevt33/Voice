@@ -6,12 +6,37 @@ import queue
 import torch
 import logging
 import tkinter as tk
+import os
+from datetime import datetime, date
 from typing import List, Optional
 
 from TopicsUI import UIController, Topic
 from managers import StateManager, ServiceManager
 from topic_router import TopicRouter
 from browser import SUBMISSION_SUCCESS, SUBMISSION_FAILED_INPUT_UNAVAILABLE, SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED, SUBMISSION_NO_CONTENT
+
+def setup_log_rotation(log_file_path: str = "transcription.log"):
+    """
+    Clear the log file if it's older than today to keep only 1 day of logs.
+    """
+    try:
+        if os.path.exists(log_file_path):
+            # Get file modification time
+            file_mod_time = datetime.fromtimestamp(os.path.getmtime(log_file_path)).date()
+            today = date.today()
+            
+            # Clear the file if it's older than today
+            if file_mod_time < today:
+                with open(log_file_path, 'w') as f:
+                    f.write("")  # Clear the file
+                print(f"Log file {log_file_path} cleared (was from {file_mod_time}, today is {today})")
+            else:
+                print(f"Log file {log_file_path} is current (from {file_mod_time})")
+    except Exception as e:
+        print(f"Warning: Could not check/clear log file {log_file_path}: {e}")
+
+# Setup log rotation before configuring logging
+setup_log_rotation("transcription.log")
 
 # Configure logging
 logging.basicConfig(

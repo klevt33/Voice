@@ -42,6 +42,7 @@ class UIController:
         self.app_controller = app_controller
         self.topics: List[Topic] = []
         self.topic_queue = queue.Queue()
+        self.last_clicked_index = -1  # Track which topic was clicked last
         
         # The View is created and managed by the controller
         self.view = UIView(root, self)
@@ -90,9 +91,22 @@ class UIController:
         
         for i, topic in enumerate(self.topics):
             self.view.topic_listbox.insert(tk.END, topic.get_display_text())
-            if topic.selected:
+            
+            # Apply color based on selection state and last-clicked status
+            if i == self.last_clicked_index:
+                # Last clicked topic gets special highlighting
+                if topic.selected:
+                    # Last clicked + selected = darker blue
+                    self.view.topic_listbox.itemconfig(i, {'bg': '#a0a0ff'})
+                else:
+                    # Last clicked + deselected = very light blue
+                    self.view.topic_listbox.itemconfig(i, {'bg': '#f0f0ff'})
+            elif topic.selected:
+                # Regular selected = normal blue
                 self.view.topic_listbox.itemconfig(i, {'bg': '#d0d0ff'})
-                self.view.topic_listbox.selection_set(i)
+            # Deselected topics use default white background (no itemconfig needed)
+            
+            # Note: Removed selection_set calls to prevent overriding custom colors
         
         if self.view.topic_listbox.size() > 0 and yview != (0.0, 1.0):
             try:
@@ -107,6 +121,7 @@ class UIController:
             idx = self.view.topic_listbox.nearest(event.y)
             if 0 <= idx < len(self.topics):
                 self.topics[idx].selected = not self.topics[idx].selected
+                self.last_clicked_index = idx  # Track which topic was clicked last
                 self._update_full_text_display(idx)
         except tk.TclError:
             pass
@@ -115,8 +130,23 @@ class UIController:
         try:
             idx = self.view.topic_listbox.nearest(event.y)
             if 0 <= idx < len(self.topics):
+                # Check if we're deleting the last clicked topic and if it was selected
+                if self.last_clicked_index == idx:
+                    # Only reset if the last clicked topic was selected (being deleted)
+                    # If it was deselected, we keep the last_clicked_index but it will be invalid
+                    if self.topics[idx].selected:
+                        self.last_clicked_index = -1
+                        self.clear_full_text_display()
+                    # If deselected, we'll adjust the index below
+                elif self.last_clicked_index > idx:
+                    self.last_clicked_index -= 1  # Adjust index if deletion affects it
+                
                 del self.topics[idx]
-                self.view.topic_listbox.selection_clear(0, tk.END)
+                
+                # Final check: if last_clicked_index is now out of bounds, reset it
+                if self.last_clicked_index >= len(self.topics):
+                    self.last_clicked_index = -1
+                    self.clear_full_text_display()
         except tk.TclError:
             pass
 
@@ -138,17 +168,40 @@ class UIController:
     def select_topics(self, select_all=True):
         for topic in self.topics:
             topic.selected = select_all
-        if select_all:
-            self.view.topic_listbox.selection_set(0, tk.END)
-        else:
-            self.view.topic_listbox.selection_clear(0, tk.END)
+        # Keep last clicked topic - its color will automatically adjust based on new selection state
+        # (Dark blue for Select All, very light blue for Deselect All)
 
     def delete_topics(self, selected_only=True):
+        # Check if last clicked topic will be deleted
+        should_reset_last_clicked = False
+        last_clicked_topic = None
+        
+        if 0 <= self.last_clicked_index < len(self.topics):
+            last_clicked_topic = self.topics[self.last_clicked_index]
+            if selected_only:
+                # Only reset if last clicked topic was selected (being deleted)
+                should_reset_last_clicked = last_clicked_topic.selected
+            else:
+                # Delete All - always reset
+                should_reset_last_clicked = True
+        
         if selected_only:
             self.topics = [t for t in self.topics if not t.selected]
         else:
             self.topics = []
-        self.view.topic_listbox.selection_clear(0, tk.END)
+        
+        # Apply reset logic or adjust index
+        if should_reset_last_clicked:
+            self.last_clicked_index = -1
+            self.clear_full_text_display()
+        elif last_clicked_topic is not None:
+            # Find the new index of the last clicked topic
+            try:
+                self.last_clicked_index = self.topics.index(last_clicked_topic)
+            except ValueError:
+                # Topic not found (shouldn't happen, but safety check)
+                self.last_clicked_index = -1
+                self.clear_full_text_display()
 
     def submit_selected_topics(self, select_all_override=False):
         context = self.view.context_text.get(1.0, tk.END).strip()
@@ -189,8 +242,38 @@ class UIController:
         if not submitted_topics:
             return
         submitted_ids = {id(t) for t in submitted_topics}
+        
+        # Check if the last clicked topic is being removed and if it was selected
+        should_reset_last_clicked = False
+        last_clicked_topic = None
+        
+        if 0 <= self.last_clicked_index < len(self.topics):
+            last_clicked_topic = self.topics[self.last_clicked_index]
+            last_clicked_topic_id = id(last_clicked_topic)
+            if last_clicked_topic_id in submitted_ids:
+                # Only reset if the last clicked topic was selected (being submitted)
+                should_reset_last_clicked = last_clicked_topic.selected
+        
+        # Remove submitted topics
         self.topics = [t for t in self.topics if id(t) not in submitted_ids]
-        self.view.topic_listbox.selection_clear(0, tk.END)
+        
+        # Apply reset logic or adjust index
+        if should_reset_last_clicked:
+            self.last_clicked_index = -1
+            self.clear_full_text_display()
+        elif last_clicked_topic is not None and id(last_clicked_topic) not in submitted_ids:
+            # Find the new index of the last clicked topic (if it wasn't submitted)
+            try:
+                self.last_clicked_index = self.topics.index(last_clicked_topic)
+            except ValueError:
+                # Topic not found (shouldn't happen, but safety check)
+                self.last_clicked_index = -1
+                self.clear_full_text_display()
+        elif self.last_clicked_index >= len(self.topics):
+            # Index out of bounds
+            self.last_clicked_index = -1
+            self.clear_full_text_display()
+        
         logger.info(f"Cleared {len(submitted_topics)} submitted topics from UI.")
 
     def clear_full_text_display(self):
