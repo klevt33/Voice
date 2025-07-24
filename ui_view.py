@@ -70,8 +70,8 @@ class UIView(ttk.Frame):
         left_buttons_frame = ttk.Frame(top_button_area_frame)
         left_buttons_frame.pack(side=tk.LEFT, anchor=tk.W)
         ttk.Button(left_buttons_frame, text="Select All", command=lambda: self.controller.select_topics(True)).pack(side=tk.LEFT, padx=2)
-        ttk.Button(left_buttons_frame, text="Deselect All", command=lambda: self.controller.select_topics(False)).pack(side=tk.LEFT, padx=2)
-        ttk.Button(left_buttons_frame, text="Delete Selection", command=lambda: self.controller.delete_topics(True)).pack(side=tk.LEFT, padx=2)
+        ttk.Button(left_buttons_frame, text="Deselect All", command=lambda: self.controller.select_topics(False)).pack(side=tk.LEFT, padx=(2, 20))
+        ttk.Button(left_buttons_frame, text="Delete Selection", command=lambda: self.controller.delete_topics(True)).pack(side=tk.LEFT, padx=(20, 2))
         ttk.Button(left_buttons_frame, text="Delete All", command=lambda: self.controller.delete_topics(False)).pack(side=tk.LEFT, padx=2)
 
         # Right Buttons
