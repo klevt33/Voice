@@ -8,6 +8,7 @@ __pycache__/
 
 # Log files
 *.log
+test_recordings/
 
 # Downloaded Models Folder
 faster_whisper_models/
