@@ -14,6 +14,8 @@ from selenium.common.exceptions import WebDriverException
 
 from config import DEBUGGER_ADDRESS, ENABLE_SCREENSHOTS, SCREENSHOT_FOLDER
 from chat_page import ChatPage, SUBMISSION_SUCCESS, SUBMISSION_FAILED_INPUT_UNAVAILABLE, SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED, SUBMISSION_FAILED_OTHER
+from connection_monitor import ConnectionMonitor, ConnectionState
+from reconnection_manager import ReconnectionManager
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -34,6 +36,8 @@ class BrowserManager:
         self.browser_queue = queue.Queue()
         self.run_threads_ref = {"active": False}
         self.comm_thread: Optional[threading.Thread] = None
+        self.connection_monitor: Optional[ConnectionMonitor] = None
+        self.reconnection_manager: Optional[ReconnectionManager] = None
 
     def start_driver(self) -> bool:
         """Initializes the Chrome WebDriver and the ChatPage handler."""
@@ -43,12 +47,18 @@ class BrowserManager:
             c_options.add_experimental_option("debuggerAddress", DEBUGGER_ADDRESS)
             self.driver = webdriver.Chrome(options=c_options)
             self.chat_page = ChatPage(self.driver, self.chat_config)
+            
+            # Initialize connection monitor and reconnection manager
+            self.reconnection_manager = ReconnectionManager(self, self.ui_update_callback)
+            self.connection_monitor = ConnectionMonitor(self, self.ui_update_callback, self.reconnection_manager)
+            
             logger.info(f"Successfully connected to Chrome (session: {self.driver.session_id})")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Chrome: {e}")
             self.driver = None
             self.chat_page = None
+            self.connection_monitor = None
             return False
 
     def new_chat(self, context_text: Optional[str] = None, force_new_thread_and_init_prompt: bool = False) -> bool:
@@ -124,7 +134,8 @@ class BrowserManager:
     def focus_browser_window(self):
         """Brings the browser window to the foreground."""
         if not self.driver: return
-        try:
+        
+        def _focus_operation():
             title = self.driver.title
             windows = pygetwindow.getWindowsWithTitle(title)
             if windows:
@@ -132,8 +143,14 @@ class BrowserManager:
                 if win.isMinimized: win.restore()
                 win.activate()
                 logger.info(f"Window '{title}' activated.")
+        
+        try:
+            if self.connection_monitor:
+                self.connection_monitor.execute_with_monitoring(_focus_operation)
+            else:
+                _focus_operation()
         except Exception as e:
-            logger.error(f"General error focusing browser window: {e}")
+            logger.error(f"Error focusing browser window: {e}")
 
     def start_communication_thread(self):
         """Starts the thread that listens for messages from the UI queue."""
@@ -174,12 +191,29 @@ class BrowserManager:
                 if not self.chat_page:
                     raise Exception("ChatPage is not initialized.")
 
+                # 0. Validate connection health before proceeding
+                if self.connection_monitor and self.connection_monitor.get_connection_state() == ConnectionState.CONNECTED:
+                    try:
+                        if not self.test_connection_health():
+                            logger.warning("Connection health check failed, but proceeding with operation.")
+                    except Exception as e:
+                        logger.warning(f"Connection health check error: {e}")
+
                 # 1. Focus the browser window to ensure it's active.
                 self.focus_browser_window()
                 
                 # 2. Prime the input field to enable the submit button
                 logger.info("Work detected. Priming input field with 'Waiting...' ")
-                if not self.chat_page.prime_input():
+                
+                def _prime_operation():
+                    return self.chat_page.prime_input()
+                
+                if self.connection_monitor:
+                    prime_success = self.connection_monitor.execute_with_monitoring(_prime_operation)
+                else:
+                    prime_success = self.chat_page.prime_input()
+                    
+                if not prime_success:
                     logger.error("Could not prime input field. Skipping batch.")
                     self.browser_queue.task_done()
                     continue
@@ -189,9 +223,23 @@ class BrowserManager:
                 is_ready = False
                 start_time = time.time()
                 while time.time() - start_time < 300: # 5-minute overall timeout
-                    if self.chat_page.is_ready_for_input() == SUBMISSION_SUCCESS:
-                        is_ready = True
+                    def _ready_check():
+                        return self.chat_page.is_ready_for_input()
+                    
+                    try:
+                        if self.connection_monitor:
+                            ready_status = self.connection_monitor.execute_with_monitoring(_ready_check)
+                        else:
+                            ready_status = self.chat_page.is_ready_for_input()
+                            
+                        if ready_status == SUBMISSION_SUCCESS:
+                            is_ready = True
+                            break
+                    except Exception as e:
+                        # Connection error during ready check - will be handled by connection monitor
+                        logger.warning(f"Connection error during ready check: {e}")
                         break
+                        
                     if not self.run_threads_ref["active"]: return
                     time.sleep(0.2) # Small delay to prevent busy-waiting
 
@@ -211,7 +259,16 @@ class BrowserManager:
                         break
 
                 # 5. Handle screenshots
-                self._handle_screenshot_upload()
+                def _screenshot_operation():
+                    return self._handle_screenshot_upload()
+                
+                try:
+                    if self.connection_monitor:
+                        self.connection_monitor.execute_with_monitoring(_screenshot_operation)
+                    else:
+                        self._handle_screenshot_upload()
+                except Exception as e:
+                    logger.warning(f"Screenshot upload failed due to connection error: {e}")
 
                 # 6. Construct final payload and submit
                 logger.info(f"Processing a batch of {len(all_items_in_batch)} items.")
@@ -221,9 +278,22 @@ class BrowserManager:
                 combined_topic_objects = [topic for item in all_items_in_batch for topic in item.get('topic_objects', [])]
                 
                 if final_payload.strip():
-                    if self.chat_page.submit_message(final_payload):
-                        self.ui_update_callback(SUBMISSION_SUCCESS, combined_topic_objects)
-                    else:
+                    def _submit_operation():
+                        return self.chat_page.submit_message(final_payload)
+                    
+                    try:
+                        if self.connection_monitor:
+                            submit_success = self.connection_monitor.execute_with_monitoring(_submit_operation)
+                        else:
+                            submit_success = self.chat_page.submit_message(final_payload)
+                            
+                        if submit_success:
+                            self.ui_update_callback(SUBMISSION_SUCCESS, combined_topic_objects)
+                        else:
+                            self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
+                    except Exception as e:
+                        logger.error(f"Message submission failed due to connection error: {e}")
+                        # Don't clear topics on connection error - they'll be preserved for retry
                         self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
                 else:
                     self.ui_update_callback(SUBMISSION_NO_CONTENT, combined_topic_objects)
@@ -236,6 +306,81 @@ class BrowserManager:
                     self.browser_queue.task_done()
 
         logger.info("Browser communication loop has exited.")
+
+    def cleanup_driver(self):
+        """Safely cleanup existing driver connection."""
+        try:
+            if self.driver:
+                logger.info("Cleaning up existing WebDriver connection...")
+                try:
+                    self.driver.quit()
+                except Exception as e:
+                    logger.warning(f"Error during driver quit: {e}")
+                finally:
+                    self.driver = None
+                    
+            if self.chat_page:
+                self.chat_page = None
+                
+            logger.info("Driver cleanup completed.")
+            
+        except Exception as e:
+            logger.error(f"Error during driver cleanup: {e}")
+
+    def reinitialize_connection(self) -> bool:
+        """Reinitialize driver and chat page after connection loss."""
+        try:
+            logger.info("Reinitializing browser connection...")
+            
+            # Use the same initialization logic as start_driver
+            c_options = webdriver.ChromeOptions()
+            c_options.add_experimental_option("debuggerAddress", DEBUGGER_ADDRESS)
+            self.driver = webdriver.Chrome(options=c_options)
+            self.chat_page = ChatPage(self.driver, self.chat_config)
+            
+            logger.info(f"Browser connection reinitialized (session: {self.driver.session_id})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reinitialize browser connection: {e}")
+            self.driver = None
+            self.chat_page = None
+            return False
+
+    def test_connection_health(self) -> bool:
+        """Test if current connection is healthy."""
+        if not self.driver or not self.chat_page:
+            logger.warning("Cannot test connection health: driver or chat_page is None")
+            return False
+            
+        try:
+            # Test basic driver functionality
+            _ = self.driver.current_url
+            _ = self.driver.title
+            
+            # Test if we can find basic page elements
+            nav_url = self.chat_config.get("url", "")
+            if nav_url:
+                current_domain = self.driver.current_url
+                if nav_url.split("//")[1].split("/")[0] not in current_domain:
+                    logger.warning("Connection health test failed: not on expected domain")
+                    return False
+            
+            logger.info("Connection health test passed.")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Connection health test failed: {e}")
+            return False
+
+    def preserve_queue_state(self):
+        """Preserve pending queue items during reconnection."""
+        # The queue is already preserved as it's a separate object
+        # This method exists for future enhancements if needed
+        queue_size = self.browser_queue.qsize()
+        if queue_size > 0:
+            logger.info(f"Preserving {queue_size} items in browser queue during reconnection.")
+        return queue_size
 
 # Standalone utility function
 def load_single_chat_prompt(chat_name: str, chat_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:

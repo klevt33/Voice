@@ -112,6 +112,10 @@ class UIView(ttk.Frame):
         # New Thread Button
         ttk.Button(parent, text="New Thread", command=self.controller.request_new_ai_thread_ui).pack(side=tk.LEFT, padx=(0, 5))
 
+        # Reconnect Button
+        self.reconnect_button = ttk.Button(parent, text="Reconnect", command=self.controller.request_manual_reconnection)
+        self.reconnect_button.pack(side=tk.LEFT, padx=(0, 5))
+
         # Listen Toggle
         self.listen_var = tk.BooleanVar(value=False)
         self.listen_var.trace_add("write", self.controller.toggle_listening)
@@ -123,6 +127,10 @@ class UIView(ttk.Frame):
             "browser_ready": ("green", "AI Ready"),
             "browser_input_unavailable": ("#FF8C00", "AI Input Unavailable"), 
             "browser_human_verification": ("red", "AI Human Verification!"),
+            "connection_lost": ("#FF8C00", "Connection Lost - Attempting Reconnection..."),
+            "reconnecting": ("#FF8C00", "Reconnecting to browser..."),
+            "reconnected": ("green", "Reconnected - AI Ready"),
+            "connection_failed": ("red", "Connection Failed - Use reconnect button to retry"),
             "info": ("blue", "Info"),
             "success": ("green", "Success"),
             "warning": ("#FF8C00", "Warning"), 

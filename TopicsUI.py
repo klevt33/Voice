@@ -70,6 +70,17 @@ class UIController:
         self.update_browser_status("info", "Status: Starting new AI thread...")
         self.app_controller.request_new_ai_thread(context_text=context_from_ui)
 
+    def request_manual_reconnection(self):
+        logger.info("UI 'Reconnect' button clicked.")
+        self.update_browser_status("info", "Status: Manual reconnection requested...")
+        
+        # Disable the reconnect button during reconnection
+        if hasattr(self.view, 'reconnect_button'):
+            self.view.reconnect_button.config(state='disabled')
+        
+        # Request manual reconnection from app controller
+        self.app_controller.request_manual_reconnection()
+
     def add_topic_to_queue(self, topic: Topic):
         self.topic_queue.put(topic)
 
