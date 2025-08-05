@@ -86,10 +86,18 @@ class ServiceManager:
                 self.ui_controller.update_browser_status("error", "Status: Failed to connect to Chrome.")
                 return False
 
-            if self.browser_manager.new_chat():
-                self.ui_controller.update_browser_status("browser_ready", f"Status: Connected to {active_chat_name}. Ready.")
-                return True
-            else:
+            # Try to initialize chat - this is wrapped with connection monitoring in new_chat method
+            try:
+                if self.browser_manager.new_chat():
+                    # Focus the browser window after successful initialization
+                    self.browser_manager.focus_browser_window()
+                    self.ui_controller.update_browser_status("browser_ready", f"Status: Connected to {active_chat_name}. Ready.")
+                    return True
+                else:
+                    self.ui_controller.update_browser_status("error", f"Status: Failed to init {active_chat_name}.")
+                    return False
+            except Exception as e:
+                logger.error(f"Error during initial chat setup: {e}")
                 self.ui_controller.update_browser_status("error", f"Status: Failed to init {active_chat_name}.")
                 return False
         except Exception as e:

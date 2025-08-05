@@ -69,7 +69,7 @@ class BrowserManager:
             logger.error("Cannot initialize chat: Driver or ChatPage not available.")
             return False
 
-        try:
+        def _new_chat_operation():
             if not self.chat_page.navigate_to_initial_page():
                 return False
 
@@ -77,6 +77,9 @@ class BrowserManager:
                 logger.info("Forcing new thread and sending initial prompt.")
                 if not self.chat_page.start_new_thread():
                     return False
+                
+                # Focus the browser window before submitting the initial prompt
+                self.focus_browser_window()
                 
                 # Construct and send the initial prompt
                 initial_prompt = self.chat_config.get("prompt_initial_content", "")
@@ -93,11 +96,15 @@ class BrowserManager:
             self.chat_config["last_screenshot_check"] = datetime.now()
             return True
 
-        except WebDriverException as e_wd:
-            logger.error(f"WebDriverException in new_chat: {str(e_wd).splitlines()[0]}")
-            return False
+        try:
+            if self.connection_monitor:
+                return self.connection_monitor.execute_with_monitoring(_new_chat_operation)
+            else:
+                return _new_chat_operation()
+                
         except Exception as e:
-            logger.error(f"Unexpected error in new_chat: {e}", exc_info=True)
+            # Connection error will be handled by connection monitor
+            logger.error(f"Error in new_chat: {e}")
             return False
 
     def _handle_screenshot_upload(self):
@@ -338,6 +345,10 @@ class BrowserManager:
             self.driver = webdriver.Chrome(options=c_options)
             self.chat_page = ChatPage(self.driver, self.chat_config)
             
+            # Note: We don't reinitialize connection_monitor and reconnection_manager here
+            # because they are already created and we want to maintain their state
+            # The connection_monitor will be updated by the ReconnectionManager
+            
             logger.info(f"Browser connection reinitialized (session: {self.driver.session_id})")
             return True
             
@@ -370,7 +381,12 @@ class BrowserManager:
             return True
             
         except Exception as e:
-            logger.warning(f"Connection health test failed: {e}")
+            # Don't trigger reconnection from health check - just report failure
+            # Connection errors during health checks are expected when connection is lost
+            if self.connection_monitor and self.connection_monitor.is_connection_error(e):
+                logger.info(f"Connection health test detected connection error (expected): {e}")
+            else:
+                logger.warning(f"Connection health test failed: {e}")
             return False
 
     def preserve_queue_state(self):
