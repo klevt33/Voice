@@ -44,9 +44,9 @@
 - [x] 6. Implement manual reconnection UI control
 
 
-  - Add "Reconnect" button to the UI alongside existing browser controls
-  - Implement reconnect button click handler in UIController
-  - Add button state management to disable during reconnection attempts
+  - Add "Reconnect" dropdown to the UI alongside existing browser controls
+  - Implement reconnect dropdown selection handler in UIController
+  - Add dropdown options for Browser, Audio, and Both reconnection types
   - Wire manual reconnection to ReconnectionManager through app controller
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
@@ -60,16 +60,17 @@
   - _Requirements: 1.2, 2.1, 3.3, 3.4_
 
 - [x] 8. Add connection health monitoring and testing
-
-
-
   - Implement periodic connection health checks in browser operations
   - Add connection validation before critical browser operations
   - Create test methods to verify driver session validity
-  - _Requirements: 1.1, 2.4_
+  - Update health test to not treat wrong page as connection failure (consistent with startup flow)
+  - _Requirements: 1.1, 2.4, 2.5_
 
-- [ ] 9. Write unit tests for connection monitoring components
+- [-] 9. Write unit tests for connection monitoring components
+
   - Create tests for ConnectionMonitor error classification logic
+
+
   - Test ReconnectionManager retry behavior with mocked failures
   - Verify exponential backoff timing and retry limits
   - Test connection state tracking and transitions
@@ -78,6 +79,6 @@
 - [ ] 10. Write integration tests for reconnection flow
   - Test end-to-end reconnection process with simulated connection loss
   - Verify topic preservation during reconnection attempts
-  - Test manual reconnection button functionality
+  - Test manual reconnection dropdown functionality
   - Validate UI status updates throughout reconnection process
   - _Requirements: 2.3, 3.2, 3.3, 4.2, 5.2, 5.3, 5.4_

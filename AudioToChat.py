@@ -170,27 +170,40 @@ class AudioToChat:
                 try:
                     success = self.service_manager.browser_manager.reconnection_manager.attempt_reconnection()
                     
-                    # Re-enable the reconnect button after reconnection attempt
-                    def _re_enable_button():
-                        if hasattr(self.ui_controller.view, 'reconnect_button'):
-                            self.ui_controller.view.reconnect_button.config(state='normal')
-                    
-                    self.root.after(0, _re_enable_button)
+                    # Dropdown automatically resets, no need to re-enable
                     
                 except Exception as e:
                     logger.error(f"Error during manual reconnection: {e}")
-                    # Still re-enable the button even if there was an error
-                    def _re_enable_button():
-                        if hasattr(self.ui_controller.view, 'reconnect_button'):
-                            self.ui_controller.view.reconnect_button.config(state='normal')
-                    
-                    self.root.after(0, _re_enable_button)
+                    # Dropdown automatically resets, no need to re-enable
             
             import threading
             reconnect_thread = threading.Thread(target=_reconnect, daemon=True)
             reconnect_thread.start()
         else:
             logger.error("Cannot perform manual reconnection: browser manager or reconnection manager not available.")
+
+    def request_manual_audio_reconnection(self):
+        """Handle manual audio reconnection request from UI."""
+        if self.service_manager.audio_monitor:
+            # Run audio reconnection in a separate thread to avoid blocking UI
+            def _audio_reconnect():
+                try:
+                    # Attempt reconnection for both audio sources
+                    for source in ["ME", "OTHERS"]:
+                        logger.info(f"Manual audio reconnection requested for {source}")
+                        self.service_manager.audio_monitor._attempt_audio_reconnection(source)
+                    
+                    # Dropdown automatically resets, no need to re-enable
+                    
+                except Exception as e:
+                    logger.error(f"Error during manual audio reconnection: {e}")
+                    # Dropdown automatically resets, no need to re-enable
+            
+            import threading
+            audio_reconnect_thread = threading.Thread(target=_audio_reconnect, daemon=True)
+            audio_reconnect_thread.start()
+        else:
+            logger.error("Cannot perform manual audio reconnection: audio monitor not available.")
 
     def update_ui_after_submission(self, status: str, submitted_topics: List[Topic]):
         if not self.root or not self.root.winfo_exists():

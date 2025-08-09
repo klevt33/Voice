@@ -38,8 +38,9 @@ Extended to support reconnection scenarios:
 #### 4. UI Enhancements
 Updates to the status system and user controls:
 - New status states for connection issues and recovery
-- Manual reconnection button (always visible for user-initiated reconnection)
+- Manual reconnection dropdown (always visible for user-initiated reconnection)
 - Enhanced status messages with actionable information
+- Compact UI design to preserve space for essential controls
 
 ### Component Interactions
 
@@ -122,7 +123,15 @@ New status states added to the existing status system:
 - `connection_lost`: Orange indicator, "Connection Lost - Attempting Reconnection..."
 - `reconnecting`: Orange indicator, "Reconnecting to browser..."
 - `reconnected`: Green indicator, "Reconnected - AI Ready"
-- `connection_failed`: Red indicator, "Connection Failed - Manual reconnection required"
+- `connection_failed`: Red indicator, "Connection Failed - Use reconnect dropdown to retry"
+
+### UI Control Enhancements
+
+**Reconnection Dropdown Menu:**
+- Options: "Reconnect", "Browser", "Audio", "Both"
+- Default state: "Reconnect"
+- Auto-reset after selection
+- Space-efficient design to preserve room for essential controls
 
 ## Data Models
 
@@ -162,6 +171,8 @@ The system will identify connection errors by examining exception types and mess
 2. **InvalidSessionIdException** (direct Selenium exception)
 
 3. **Connection timeout** errors during browser operations
+
+**Important:** Being on the wrong page is NOT considered a connection error. This should show a warning but allow the connection to succeed, consistent with the startup flow.
 
 ### Error Recovery Strategy
 

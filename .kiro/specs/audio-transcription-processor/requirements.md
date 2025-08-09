@@ -6,6 +6,15 @@ The Audio Transcription Processor is a real-time assistance tool designed to emp
 
 The application captures audio from two distinct sources ([ME] for the user, [OTHERS] for conversation partners), transcribes speech to text in real-time using GPU-accelerated processing, displays transcribed content in an interactive interface, and enables seamless submission to AI chat services for analysis and insights.
 
+## Key Features
+
+- **Real-time Audio Processing**: Continuous monitoring of multiple microphone sources with device failure resilience
+- **Intelligent Transcription**: GPU-accelerated speech-to-text conversion with source identification
+- **Smart Topic Routing**: Configurable auto-submission based on audio source
+- **Browser Integration**: Seamless submission to AI chat interfaces with automatic connection recovery
+- **Connection Resilience**: Robust reconnection capabilities for both browser and audio systems
+- **User Control**: Comprehensive manual controls including unified reconnection dropdown interface
+
 ## Requirements
 
 ### Requirement 1: Dual-Source Audio Capture

@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from audio_handler import recording_thread
 from transcription import transcription_thread
 from browser import BrowserManager, load_single_chat_prompt
+from audio_monitor import AudioMonitor
 from config import MIC_INDEX_ME, MIC_INDEX_OTHERS, CHAT, CHATS
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class ServiceManager:
         self.ui_controller = ui_controller
         self.audio: Optional[pyaudio.PyAudio] = None
         self.browser_manager: Optional[BrowserManager] = None
+        self.audio_monitor: Optional[AudioMonitor] = None
         self.threads = []
         self.mic_data = {
             "ME": {"index": MIC_INDEX_ME, "stream": None},
@@ -61,6 +63,8 @@ class ServiceManager:
     def initialize_audio(self) -> bool:
         try:
             self.audio = pyaudio.PyAudio()
+            # Initialize audio monitor
+            self.audio_monitor = AudioMonitor(self, self.ui_controller)
             return True
         except Exception as e:
             logger.error(f"Failed to initialize PyAudio: {e}")
@@ -81,7 +85,10 @@ class ServiceManager:
                 self.ui_controller.update_browser_status("error", f"Status: Config load error for {active_chat_name}.")
                 return False
 
-            self.browser_manager = BrowserManager(loaded_config, ui_update_callback)
+            # Create status callback for manual navigation
+            status_callback = lambda status_key, message: self.ui_controller.update_browser_status(status_key, message)
+            
+            self.browser_manager = BrowserManager(loaded_config, ui_update_callback, status_callback)
             if not self.browser_manager.start_driver():
                 self.ui_controller.update_browser_status("error", "Status: Failed to connect to Chrome.")
                 return False
@@ -89,9 +96,15 @@ class ServiceManager:
             # Try to initialize chat - this is wrapped with connection monitoring in new_chat method
             try:
                 if self.browser_manager.new_chat():
-                    # Focus the browser window after successful initialization
-                    self.browser_manager.focus_browser_window()
-                    self.ui_controller.update_browser_status("browser_ready", f"Status: Connected to {active_chat_name}. Ready.")
+                    # Focus the browser window after successful initialization (using startup method)
+                    self.browser_manager.focus_browser_window_for_startup()
+                    
+                    # Check if browser is on correct page before showing "Ready" status
+                    if hasattr(self.browser_manager, 'on_correct_page') and not self.browser_manager.on_correct_page:
+                        # Warning message was already shown, don't overwrite it
+                        logger.info("Browser connected but not on correct page - warning message preserved")
+                    else:
+                        self.ui_controller.update_browser_status("browser_ready", f"Status: Connected to {active_chat_name}. Ready.")
                     return True
                 else:
                     self.ui_controller.update_browser_status("error", f"Status: Failed to init {active_chat_name}.")
@@ -114,7 +127,7 @@ class ServiceManager:
             thread = threading.Thread(
                 name=f"Recorder{source}",
                 target=recording_thread, 
-                args=(source, self.mic_data, audio_queue, self.audio, self.state_manager.run_threads_ref)
+                args=(source, self.mic_data, audio_queue, self.audio, self.state_manager.run_threads_ref, self.audio_monitor)
             )
             thread.daemon = True
             self.threads.append(thread)

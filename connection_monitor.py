@@ -42,6 +42,7 @@ class ConnectionMonitor:
         self.reconnection_manager = reconnection_manager
         self.connection_state = ConnectionState.CONNECTED
         self.last_error: Optional[Exception] = None
+        self.last_reconnection_time: Optional[datetime] = None
         
     def execute_with_monitoring(self, operation: Callable, *args, **kwargs) -> Any:
         """
@@ -145,6 +146,9 @@ class ConnectionMonitor:
     def set_connection_state(self, state: ConnectionState):
         """Allows external components to update the connection state."""
         self._update_connection_state(state)
+        # Track when we successfully reconnect
+        if state == ConnectionState.CONNECTED and self.connection_state != ConnectionState.CONNECTED:
+            self.last_reconnection_time = datetime.now()
     
     def reset_error(self):
         """Clears the last recorded error."""
@@ -153,3 +157,16 @@ class ConnectionMonitor:
     def get_last_error(self) -> Optional[Exception]:
         """Returns the last connection error that was detected."""
         return self.last_error
+    
+    def is_in_post_reconnection_period(self, tolerance_seconds: float = 2.0) -> bool:
+        """
+        Returns True if we're within the post-reconnection stabilization period.
+        
+        Args:
+            tolerance_seconds: How long after reconnection to be tolerant of errors
+        """
+        if not self.last_reconnection_time:
+            return False
+        
+        time_since_reconnection = (datetime.now() - self.last_reconnection_time).total_seconds()
+        return time_since_reconnection < tolerance_seconds

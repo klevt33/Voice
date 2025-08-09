@@ -13,6 +13,12 @@ class UIView(ttk.Frame):
         self.pack(fill=tk.BOTH, expand=True)
 
         self.controller = controller
+        
+        # Initialize delete submitted preference (default: False)
+        self.delete_submitted_var = tk.BooleanVar(value=False)
+        
+        # Initialize keep prefix preference (default: False)
+        self.keep_prefix_var = tk.BooleanVar(value=False)
 
         self.create_widgets()
 
@@ -112,9 +118,17 @@ class UIView(ttk.Frame):
         # New Thread Button
         ttk.Button(parent, text="New Thread", command=self.controller.request_new_ai_thread_ui).pack(side=tk.LEFT, padx=(0, 5))
 
-        # Reconnect Button
-        self.reconnect_button = ttk.Button(parent, text="Reconnect", command=self.controller.request_manual_reconnection)
-        self.reconnect_button.pack(side=tk.LEFT, padx=(0, 5))
+        # Reconnect Dropdown Menu
+        self.reconnect_var = tk.StringVar(value="Reconnect")
+        self.reconnect_options = ["Reconnect", "Browser", "Audio", "Both"]
+        reconnect_menu = ttk.OptionMenu(
+            parent,
+            self.reconnect_var,
+            self.reconnect_options[0],
+            *self.reconnect_options,
+            command=self.controller.on_reconnect_selection
+        )
+        reconnect_menu.pack(side=tk.LEFT, padx=(0, 5))
 
         # Listen Toggle
         self.listen_var = tk.BooleanVar(value=False)
@@ -191,11 +205,21 @@ class UIView(ttk.Frame):
     def _create_action_buttons(self, parent):
         # Copy buttons (left side)
         ttk.Button(parent, text="Copy Selected", command=self.controller.copy_selected_topics).pack(side=tk.LEFT, padx=5)
-        ttk.Button(parent, text="Copy All", command=self.controller.copy_all_topics).pack(side=tk.LEFT, padx=(0, 20))
+        ttk.Button(parent, text="Copy All", command=self.controller.copy_all_topics).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Keep prefix checkbox (between copy and delete submitted)
+        ttk.Checkbutton(parent, text="Keep prefix", variable=self.keep_prefix_var).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Delete submitted checkbox (center)
+        ttk.Checkbutton(parent, text="Delete submitted", variable=self.delete_submitted_var).pack(side=tk.LEFT, padx=(0, 20))
         
         # Submit buttons (right side)
-        ttk.Button(parent, text="Submit Selected", command=self.controller.submit_selected_topics).pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Button(parent, text="Submit Selected", command=self.controller.submit_selected_topics).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(parent, text="Submit All", command=self.controller.submit_all_topics).pack(side=tk.LEFT, padx=5)
+
+    def get_keep_prefix_state(self) -> bool:
+        """Return the current state of the keep prefix checkbox."""
+        return self.keep_prefix_var.get()
 
     def update_browser_status(self, status_key: str, custom_message: Optional[str] = None):
         color, default_message = self.status_colors.get(status_key, ("gray", "Status: Unknown"))

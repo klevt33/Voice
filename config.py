@@ -34,10 +34,18 @@ BEAM_SIZE = 5          # Beam size for faster-whisper
 CHAT = "ChatGPT"    # Default chat to use: "Perplexity" or "ChatGPT"
 DEBUGGER_ADDRESS = "localhost:9222"  # Debugging address for Chrome
 
+
+
 # Screenshot configuration
 ENABLE_SCREENSHOTS = True  # Toggle for screenshot functionality
-SCREENSHOT_FOLDER = r"C:\Users\klevt\OneDrive\Pictures\Screenshots"  # Screenshot folder path
-# SCREENSHOT_FOLDER = r"C:\Users\kirill.levtov\OneDrive - Perficient, Inc\Pictures\Screenshots"  # Screenshot folder path
+# SCREENSHOT_FOLDER = r"C:\Users\klevt\OneDrive\Pictures\Screenshots"  # Screenshot folder path
+SCREENSHOT_FOLDER = r"C:\Users\kirill.levtov\OneDrive - Perficient, Inc\Pictures\Screenshots"  # Screenshot folder path
+
+# Topic storage configuration
+# Folder where captured topics will be automatically saved to files
+# Each audio session (Listen ON/OFF cycle) creates a new timestamped file
+# Topics are saved independently of UI interactions (submit/delete/copy)
+TOPIC_STORAGE_FOLDER = r"C:\Transcripts"  # Default storage path
 
 # Chat service configurations
 CHATS = {

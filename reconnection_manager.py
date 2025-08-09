@@ -59,8 +59,13 @@ class ReconnectionManager:
                     self.browser_manager.connection_monitor.set_connection_state(ConnectionState.CONNECTED)
                     self.browser_manager.connection_monitor.reset_error()
                 
-                # Update UI to show successful reconnection
-                self.ui_callback("reconnected", [])
+                # Only show "reconnected" status if browser is on correct page
+                # If not on correct page, the warning status from navigate_to_initial_page should remain
+                if hasattr(self.browser_manager, 'on_correct_page') and self.browser_manager.on_correct_page:
+                    self.ui_callback("reconnected", [])
+                    logger.info("Reconnection completed - browser is on correct page.")
+                else:
+                    logger.info("Reconnection completed - browser not on correct page.")
                 
                 return True
             else:
@@ -158,6 +163,10 @@ class ReconnectionManager:
                 logger.warning("Connection health test failed.")
                 return False
             
+            # Step 5: Allow brief stabilization time for WebDriver session
+            logger.info("Allowing WebDriver session to stabilize...")
+            time.sleep(0.5)  # Brief delay to ensure session is fully ready
+            
             logger.info("Reconnection completed successfully.")
             return True
             
@@ -174,6 +183,7 @@ class ReconnectionManager:
         """
         try:
             # Navigate to the chat page and ensure it's ready
+            # This will handle showing warnings if not on correct page
             if not self.browser_manager.new_chat():
                 logger.error("Failed to initialize chat page after reconnection.")
                 return False

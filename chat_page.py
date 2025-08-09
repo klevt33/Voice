@@ -32,25 +32,193 @@ class ChatPage:
         self.wait_long = WebDriverWait(self.driver, 10)
         self.wait_short = WebDriverWait(self.driver, 3)
 
-    def navigate_to_initial_page(self) -> bool:
-        """Navigates to the chat's base URL if not already there."""
+    def navigate_to_initial_page(self, status_callback: callable = None) -> tuple[bool, bool]:
+        """Checks if browser is on the correct AI chat page and shows warning if not.
+        
+        Returns:
+            tuple[bool, bool]: (success, on_correct_page)
+        """
         nav_url = self.config.get("url", "")
         if not nav_url:
             logger.error("Cannot navigate: 'url' not in chat config.")
-            return False
+            return False, False
         
         try:
             parsed_nav_url = urlparse(nav_url)
             domain_for_check = parsed_nav_url.netloc.replace("www.", "")
-            current_url_domain = urlparse(self.driver.current_url).netloc.replace("www.", "")
+            
+            # Try to get current URL - this may fail if there's no execution context
+            try:
+                current_url = self.driver.current_url
+                current_url_domain = urlparse(current_url).netloc.replace("www.", "")
+                
+                # Check if already on the correct domain
+                if domain_for_check == current_url_domain:
+                    logger.info(f"Browser is on correct domain: {domain_for_check}")
+                    return True, True
+                else:
+                    # Browser is not on the correct page - show warning and continue
+                    logger.warning(f"Browser is not on expected AI chat page. Expected: {domain_for_check}, Current: {current_url_domain}")
+                    
+                    # Update UI status with warning if callback is provided
+                    if status_callback:
+                        try:
+                            status_callback("warning", f"Browser not on {domain_for_check} - please navigate manually")
+                            logger.info("UI status updated with navigation warning")
+                        except Exception as callback_error:
+                            logger.warning(f"Failed to update UI status: {callback_error}")
+                    
+                    return True, False
+                    
+            except Exception as url_error:
+                # Can't get current URL (execution context error, etc.) - assume wrong page
+                logger.warning(f"Cannot determine current browser page (execution context error). Expected: {domain_for_check}")
+                logger.debug(f"URL access error: {url_error}")
+                
+                # Update UI status with warning if callback is provided
+                if status_callback:
+                    try:
+                        status_callback("warning", f"Browser not on {domain_for_check} - please navigate manually")
+                        logger.info("UI status updated with navigation warning")
+                    except Exception as callback_error:
+                        logger.warning(f"Failed to update UI status: {callback_error}")
+                
+                return True, False
+            
+        except Exception as e:
+            logger.error(f"Error in navigate_to_initial_page: {e}")
+            return True, False  # Continue anyway, assume wrong page
 
-            if domain_for_check != current_url_domain:
-                logger.info(f"Not on {domain_for_check}, navigating to {nav_url}")
-                self.driver.get(nav_url)
-                self.wait_long.until(EC.url_contains(domain_for_check))
+    def _wait_for_manual_navigation_with_retry(self, target_domain: str, timeout: int = 60) -> bool:
+        """Wait for manual navigation using window title detection."""
+        logger.info(f"Waiting for manual navigation to {target_domain}...")
+        logger.info("Navigate to the URL in your Chrome browser, then the app will continue.")
+        
+        # Map domains to expected window title keywords
+        domain_keywords = {
+            "chatgpt.com": "chatgpt",
+            "perplexity.ai": "perplexity"
+        }
+        
+        expected_keyword = domain_keywords.get(target_domain.lower(), target_domain.split('.')[0])
+        
+        start_time = time.time()
+        check_interval = 3  # Check every 3 seconds
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Re-activate window periodically
+                if (time.time() - start_time) % 15 < check_interval:  # Every 15 seconds
+                    self._activate_browser_window_safe()
+                
+                # Try URL check first (preferred method)
+                try:
+                    current_domain = urlparse(self.driver.current_url).netloc.replace("www.", "")
+                    if target_domain == current_domain:
+                        logger.info(f"Successfully detected navigation to {target_domain} via URL")
+                        return True
+                except:
+                    pass  # Fall back to title check
+                
+                # Fallback: Check window title (more reliable when execution context is broken)
+                try:
+                    import pygetwindow
+                    chrome_windows = [w for w in pygetwindow.getAllWindows() if 'chrome' in w.title.lower()]
+                    for window in chrome_windows:
+                        if expected_keyword.lower() in window.title.lower():
+                            logger.info(f"Successfully detected navigation to {target_domain} via window title: '{window.title}'")
+                            return True
+                except Exception as title_error:
+                    logger.debug(f"Title check failed: {title_error}")
+                    
+                time.sleep(check_interval)
+                
+            except Exception as e:
+                logger.debug(f"Navigation check failed, retrying: {e}")
+                time.sleep(check_interval)
+        
+        logger.warning(f"Timeout waiting for manual navigation to {target_domain}")
+        logger.info("Assuming navigation was completed manually and continuing...")
+        return True  # Assume success to avoid blocking the app
+
+
+
+    def _suggest_manual_navigation(self, target_url: str):
+        """Suggest manual navigation when automatic methods fail."""
+        logger.info("=" * 60)
+        logger.info("MANUAL NAVIGATION REQUIRED")
+        logger.info("=" * 60)
+        logger.info(f"Please manually navigate to: {target_url}")
+        logger.info("This helps avoid bot detection systems.")
+        logger.info("Once you're on the correct page, the automation will continue.")
+        logger.info("=" * 60)
+
+    def _wait_for_manual_navigation(self, target_domain: str, timeout: int = 60) -> bool:
+        """Wait for user to manually navigate to the target domain."""
+        logger.info(f"Waiting up to {timeout} seconds for manual navigation to {target_domain}...")
+        
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                current_domain = urlparse(self.driver.current_url).netloc.replace("www.", "")
+                if target_domain == current_domain:
+                    logger.info(f"Successfully detected navigation to {target_domain}")
+                    return True
+                time.sleep(1)
+            except Exception as e:
+                logger.warning(f"Error checking current URL: {e}")
+                time.sleep(1)
+        
+        logger.error(f"Timeout waiting for manual navigation to {target_domain}")
+        return False
+
+    def _navigate_via_javascript(self, url: str, domain_for_check: str) -> bool:
+        """Navigate using JavaScript (less detectable than driver.get)."""
+        try:
+            logger.info(f"Attempting JavaScript navigation to {url}")
+            
+            # Test if we have a valid execution context first
+            try:
+                self.driver.execute_script("return document.readyState;")
+                logger.info("JavaScript execution context is available")
+            except Exception as context_error:
+                logger.warning(f"No valid JavaScript execution context: {context_error}")
+                # Fall back to direct navigation
+                return self._navigate_direct_fallback(url, domain_for_check)
+            
+            # Ensure we have a valid execution context
+            current_url = self.driver.current_url
+            logger.info(f"Current URL before navigation: {current_url}")
+            
+            # Use JavaScript to navigate
+            self.driver.execute_script(f"window.location.href = '{url}';")
+            
+            # Wait for navigation with a reasonable timeout
+            logger.info(f"Waiting for navigation to domain: {domain_for_check}")
+            self.wait_long.until(EC.url_contains(domain_for_check))
+            
+            new_url = self.driver.current_url
+            logger.info(f"Successfully navigated via JavaScript to: {new_url}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"JavaScript navigation failed: {e}")
+            # Try direct navigation as fallback
+            logger.info("Attempting direct navigation as fallback")
+            return self._navigate_direct_fallback(url, domain_for_check)
+
+    def _navigate_direct_fallback(self, url: str, domain_for_check: str) -> bool:
+        """Fallback to direct navigation when JavaScript fails."""
+        try:
+            logger.info(f"Using direct navigation to {url}")
+            self.driver.get(url)
+            self.wait_long.until(EC.url_contains(domain_for_check))
+            logger.info("Successfully navigated via direct method")
             return True
         except Exception as e:
-            logger.error(f"Failed to navigate to initial page: {e}")
+            logger.error(f"Direct navigation also failed: {e}")
+            # If everything fails, suggest manual navigation
+            self._suggest_manual_navigation(url)
             return False
 
     def start_new_thread(self) -> bool:
@@ -79,7 +247,11 @@ class ChatPage:
             return True
         except Exception as e:
             logger.warning(f"Error clicking 'New Thread', falling back to navigation: {e}")
-            return self.navigate_to_initial_page()
+            result = self.navigate_to_initial_page()
+            # Handle tuple return format
+            if isinstance(result, tuple):
+                return result[0]  # Return just the success boolean
+            return result
 
     def is_ready_for_input(self) -> str:
         """Checks if the input field is ready and no human verification is detected."""
@@ -206,3 +378,14 @@ class ChatPage:
         except Exception as e:
             logger.error(f"Screenshot upload failed: {e}", exc_info=True)
             return False
+
+
+    def _suggest_manual_navigation(self, target_url: str):
+        """Suggest manual navigation when automatic methods fail."""
+        logger.info("=" * 60)
+        logger.info("MANUAL NAVIGATION REQUIRED")
+        logger.info("=" * 60)
+        logger.info(f"Please manually navigate to: {target_url}")
+        logger.info("This helps avoid bot detection systems.")
+        logger.info("Once you're on the correct page, the automation will continue.")
+        logger.info("=" * 60)

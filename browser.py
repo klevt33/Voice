@@ -28,11 +28,12 @@ class BrowserManager:
     Manages the browser driver, the communication thread, and orchestrates
     high-level browser actions by delegating to a ChatPage instance.
     """
-    def __init__(self, chat_config: Dict[str, Any], ui_update_callback: callable):
+    def __init__(self, chat_config: Dict[str, Any], ui_update_callback: callable, status_callback: callable = None):
         self.driver: Optional[webdriver.Chrome] = None
         self.chat_page: Optional[ChatPage] = None
         self.chat_config = chat_config
         self.ui_update_callback = ui_update_callback
+        self.status_callback = status_callback
         self.browser_queue = queue.Queue()
         self.run_threads_ref = {"active": False}
         self.comm_thread: Optional[threading.Thread] = None
@@ -70,12 +71,41 @@ class BrowserManager:
             return False
 
         def _new_chat_operation():
-            if not self.chat_page.navigate_to_initial_page():
+            # Wrap navigate_to_initial_page with connection monitoring
+            def _navigate_operation():
+                return self.chat_page.navigate_to_initial_page(status_callback=self.status_callback)
+            
+            if self.connection_monitor:
+                navigate_result = self.connection_monitor.execute_with_monitoring(_navigate_operation)
+            else:
+                navigate_result = self.chat_page.navigate_to_initial_page(status_callback=self.status_callback)
+            
+            # Handle the new tuple return format
+            if isinstance(navigate_result, tuple):
+                navigate_success, on_correct_page = navigate_result
+                # Store the page status for later use
+                self.on_correct_page = on_correct_page
+            else:
+                # Fallback for backward compatibility
+                navigate_success = navigate_result
+                self.on_correct_page = True
+                
+            if not navigate_success:
                 return False
 
             if force_new_thread_and_init_prompt:
                 logger.info("Forcing new thread and sending initial prompt.")
-                if not self.chat_page.start_new_thread():
+                
+                # Wrap start_new_thread with connection monitoring
+                def _start_thread_operation():
+                    return self.chat_page.start_new_thread()
+                
+                if self.connection_monitor:
+                    thread_success = self.connection_monitor.execute_with_monitoring(_start_thread_operation)
+                else:
+                    thread_success = self.chat_page.start_new_thread()
+                    
+                if not thread_success:
                     return False
                 
                 # Focus the browser window before submitting the initial prompt
@@ -87,7 +117,16 @@ class BrowserManager:
                     initial_prompt = f"{initial_prompt}\n\n[CONTEXT] {context_text.strip()}"
                 
                 if initial_prompt.strip():
-                    if not self.chat_page.submit_message(initial_prompt.strip()):
+                    # Wrap submit_message with connection monitoring
+                    def _submit_operation():
+                        return self.chat_page.submit_message(initial_prompt.strip())
+                    
+                    if self.connection_monitor:
+                        submit_success = self.connection_monitor.execute_with_monitoring(_submit_operation)
+                    else:
+                        submit_success = self.chat_page.submit_message(initial_prompt.strip())
+                        
+                    if not submit_success:
                         logger.error("Failed to send initial prompt message.")
                         return False
                 else:
@@ -97,14 +136,12 @@ class BrowserManager:
             return True
 
         try:
-            if self.connection_monitor:
-                return self.connection_monitor.execute_with_monitoring(_new_chat_operation)
-            else:
-                return _new_chat_operation()
+            return _new_chat_operation()
                 
         except Exception as e:
-            # Connection error will be handled by connection monitor
-            logger.error(f"Error in new_chat: {e}")
+            # Connection errors should now be handled by individual operation monitoring
+            # This catch is for any remaining non-connection errors
+            logger.error(f"Unexpected error in new_chat: {e}")
             return False
 
     def _handle_screenshot_upload(self):
@@ -138,26 +175,44 @@ class BrowserManager:
             logger.error(f"Error checking for new screenshots: {e}")
             return []
 
-    def focus_browser_window(self):
-        """Brings the browser window to the foreground."""
-        if not self.driver: return
+    def focus_browser_window_for_startup(self):
+        """Brings the browser window to the foreground during app initialization using Selenium window management."""
+        if not self.driver: 
+            return
         
-        def _focus_operation():
+        try:
+            # Get current window handle and switch to it to ensure focus
+            current_window = self.driver.current_window_handle
+            self.driver.switch_to.window(current_window)
+            
+            # Maximize the window to ensure it's visible and focused
+            self.driver.maximize_window()
+            logger.info("Browser window focused using Selenium window management (startup)")
+            
+        except Exception as e:
+            logger.error(f"Failed to focus browser window during startup: {e}")
+
+    def focus_browser_window(self):
+        """Brings the browser window to the foreground for topic submission using pygetwindow."""
+        if not self.driver: 
+            return
+        
+        try:
+            # Use pygetwindow approach that works well for topic submission
+            import pygetwindow
             title = self.driver.title
             windows = pygetwindow.getWindowsWithTitle(title)
             if windows:
                 win = windows[0]
-                if win.isMinimized: win.restore()
+                if win.isMinimized: 
+                    win.restore()
                 win.activate()
-                logger.info(f"Window '{title}' activated.")
-        
-        try:
-            if self.connection_monitor:
-                self.connection_monitor.execute_with_monitoring(_focus_operation)
+                logger.info(f"Browser window focused using pygetwindow (topic submission): '{title}'")
             else:
-                _focus_operation()
+                logger.warning(f"No windows found with title: '{title}'")
+                
         except Exception as e:
-            logger.error(f"Error focusing browser window: {e}")
+            logger.error(f"Failed to focus browser window for topic submission: {e}")
 
     def start_communication_thread(self):
         """Starts the thread that listens for messages from the UI queue."""
@@ -359,32 +414,29 @@ class BrowserManager:
             return False
 
     def test_connection_health(self) -> bool:
-        """Test if current connection is healthy."""
+        """Test if current connection is healthy.
+        
+        Note: Being on the wrong page is NOT considered a connection failure.
+        This is consistent with the startup flow which shows a warning but continues.
+        """
         if not self.driver or not self.chat_page:
             logger.warning("Cannot test connection health: driver or chat_page is None")
             return False
             
         try:
-            # Test basic driver functionality
+            # Test basic driver functionality - these are the real connection tests
             _ = self.driver.current_url
             _ = self.driver.title
             
-            # Test if we can find basic page elements
-            nav_url = self.chat_config.get("url", "")
-            if nav_url:
-                current_domain = self.driver.current_url
-                if nav_url.split("//")[1].split("/")[0] not in current_domain:
-                    logger.warning("Connection health test failed: not on expected domain")
-                    return False
-            
-            logger.info("Connection health test passed.")
+            # If we can access basic driver properties, the connection is healthy
+            # Being on the wrong page is handled separately by navigate_to_initial_page
+            logger.info("Connection health test passed - driver is responsive.")
             return True
             
         except Exception as e:
-            # Don't trigger reconnection from health check - just report failure
-            # Connection errors during health checks are expected when connection is lost
+            # Only actual WebDriver connection errors should fail the health test
             if self.connection_monitor and self.connection_monitor.is_connection_error(e):
-                logger.info(f"Connection health test detected connection error (expected): {e}")
+                logger.info(f"Connection health test detected connection error: {e}")
             else:
                 logger.warning(f"Connection health test failed: {e}")
             return False

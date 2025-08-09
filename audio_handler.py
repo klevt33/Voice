@@ -108,12 +108,14 @@ def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool]) -> Op
         except Exception as e:
             if run_threads_ref["active"]:
                 logger.error(f"Error reading from {source} stream while waiting for sound: {e}")
+                if audio_monitor:
+                    audio_monitor.handle_audio_error(source, e)
                 time.sleep(1)
     return None
 
 def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]], 
                     audio_queue: queue.Queue, audio: pyaudio.PyAudio, 
-                    run_threads_ref: Dict[str, bool]) -> None:
+                    run_threads_ref: Dict[str, bool], audio_monitor=None) -> None:
     """
     Generic thread for handling audio recording from a specific microphone.
     It waits for sound, records until silence, and then queues the audio for processing.
@@ -130,19 +132,27 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
         logger.error(f"Error accessing {source} microphone with index {mic_index}: {e}")
         return
     
-    stream = None
-    try:
-        stream = audio.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=SAMPLE_RATE,
-            input=True,
-            input_device_index=mic_index,
-            frames_per_buffer=CHUNK_SIZE
-        )
-        mic["stream"] = stream
-    except Exception as e:
-        logger.error(f"Error opening {source} audio stream: {e}")
+    def create_audio_stream():
+        """Helper function to create audio stream with error handling"""
+        try:
+            stream = audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=SAMPLE_RATE,
+                input=True,
+                input_device_index=mic_index,
+                frames_per_buffer=CHUNK_SIZE
+            )
+            mic["stream"] = stream
+            return stream
+        except Exception as e:
+            logger.error(f"Error opening {source} audio stream: {e}")
+            if audio_monitor:
+                audio_monitor.handle_audio_error(source, e)
+            return None
+    
+    stream = create_audio_stream()
+    if not stream:
         return
     
     logger.info(f"Ready to record from {source} microphone. Listening for sound...")
@@ -153,6 +163,15 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
             if not run_threads_ref.get("listening", True):
                 time.sleep(0.1)
                 continue
+            
+            # Check if stream is still valid, recreate if needed
+            if not stream or not hasattr(stream, 'is_active'):
+                logger.info(f"Recreating audio stream for {source}")
+                stream = create_audio_stream()
+                if not stream:
+                    logger.error(f"Failed to recreate audio stream for {source}, retrying in 5 seconds...")
+                    time.sleep(5)
+                    continue
             
             # 1. Wait for sound to begin
             initial_data = _wait_for_sound(stream, source, run_threads_ref)
@@ -192,6 +211,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 except Exception as e:
                     if run_threads_ref["active"]:
                         logger.error(f"Error during {source} recording: {e}")
+                        if audio_monitor:
+                            audio_monitor.handle_audio_error(source, e)
             
             if not run_threads_ref.get("listening", True) and mic["recording"]:
                 logger.info(f"Listening turned off while recording from {source}. Stopping recording.")
@@ -244,6 +265,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                             except Exception as e:
                                 if run_threads_ref["active"]:
                                     logger.error(f"Error during {source} recording continuation: {e}")
+                                    if audio_monitor:
+                                        audio_monitor.handle_audio_error(source, e)
                         
                         # Process the continuation fragment
                         if mic["frames"]:
@@ -252,6 +275,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 except Exception as e:
                     if run_threads_ref["active"]:
                         logger.error(f"Error checking for sound continuation on {source}: {e}")
+                        if audio_monitor:
+                            audio_monitor.handle_audio_error(source, e)
     
     finally:
         logger.info(f"Cleaning up {source} recording thread")

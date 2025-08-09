@@ -26,9 +26,10 @@ This feature addresses the issue where the application loses connection to the b
 1. WHEN a connection loss is detected THEN the system SHALL attempt to reconnect to the browser automatically
 2. WHEN attempting reconnection THEN the system SHALL update the status line to indicate "Reconnecting..."
 3. WHEN reconnection is successful THEN the system SHALL restore the chat page to a ready state
-4. WHEN reconnection is successful THEN the system SHALL update the status line to indicate successful reconnection
-5. IF reconnection fails after the first attempt THEN the system SHALL retry up to 3 times with increasing delays
-6. IF all reconnection attempts fail THEN the system SHALL update the status line to indicate connection failure
+4. WHEN reconnection is successful AND browser is on correct page THEN the system SHALL update the status line to indicate successful reconnection
+5. WHEN reconnection is successful BUT browser is not on correct page THEN the system SHALL show a warning message and consider reconnection successful
+6. IF reconnection fails due to actual connection errors THEN the system SHALL retry up to 3 times with increasing delays
+7. IF all reconnection attempts fail THEN the system SHALL update the status line to indicate connection failure
 
 ### Requirement 3
 
@@ -47,10 +48,10 @@ This feature addresses the issue where the application loses connection to the b
 
 #### Acceptance Criteria
 
-1. WHEN the application is running THEN the system SHALL provide a manual reconnection button that is always visible in the UI
-2. WHEN the user clicks the manual reconnection button THEN the system SHALL attempt to reconnect to the browser
+1. WHEN the application is running THEN the system SHALL provide a manual reconnection dropdown that is always visible in the UI
+2. WHEN the user selects "Browser" from the reconnection dropdown THEN the system SHALL attempt to reconnect to the browser
 3. WHEN manual reconnection is triggered THEN the system SHALL follow the same reconnection process as automatic reconnection
-4. WHEN manual reconnection is in progress THEN the reconnection button SHALL be disabled to prevent multiple simultaneous attempts
+4. WHEN the user selects a reconnection option THEN the dropdown SHALL reset to its default state after the action is initiated
 
 ### Requirement 5
 
@@ -58,8 +59,10 @@ This feature addresses the issue where the application loses connection to the b
 
 #### Acceptance Criteria
 
-1. WHEN the browser connection is active THEN the status line SHALL display "AI Ready" with green indicator
-2. WHEN connection loss is detected THEN the status line SHALL display "Connection Lost - Attempting Reconnection..." with orange indicator
-3. WHEN reconnection is in progress THEN the status line SHALL display "Reconnecting to browser..." with orange indicator
-4. WHEN reconnection succeeds THEN the status line SHALL display "Reconnected - AI Ready" with green indicator
-5. WHEN all reconnection attempts fail THEN the status line SHALL display "Connection Failed - Use reconnect button to retry" with red indicator
+1. WHEN the browser connection is active AND on correct page THEN the status line SHALL display "AI Ready" with green indicator
+2. WHEN the browser connection is active BUT not on correct page THEN the status line SHALL display warning message with orange indicator
+3. WHEN connection loss is detected THEN the status line SHALL display "Connection Lost - Attempting Reconnection..." with orange indicator
+4. WHEN reconnection is in progress THEN the status line SHALL display "Reconnecting to browser..." with orange indicator
+5. WHEN reconnection succeeds AND browser is on correct page THEN the status line SHALL display "Reconnected - AI Ready" with green indicator
+6. WHEN reconnection succeeds BUT browser is not on correct page THEN the status line SHALL display warning message with orange indicator
+7. WHEN all reconnection attempts fail THEN the status line SHALL display "Connection Failed - Use reconnect button to retry" with red indicator

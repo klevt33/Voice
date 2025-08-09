@@ -9,6 +9,8 @@ from typing import List, Optional
 import pyperclip
 
 from ui_view import UIView
+from topic_storage import TopicStorageManager
+from config import TOPIC_STORAGE_FOLDER
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +29,7 @@ class Topic:
     timestamp: datetime
     source: str  # Either "ME" or "OTHERS"
     selected: bool = False
+    submitted: bool = False
     
     def get_display_text(self):
         source_tag = f"[{self.source}]"
@@ -44,6 +47,9 @@ class UIController:
         self.topic_queue = queue.Queue()
         self.last_clicked_index = -1  # Track which topic was clicked last
         
+        # Initialize topic storage manager
+        self.storage_manager = TopicStorageManager(TOPIC_STORAGE_FOLDER)
+        
         # The View is created and managed by the controller
         self.view = UIView(root, self)
         self.view.listen_var.set(False)
@@ -60,9 +66,22 @@ class UIController:
     
     def toggle_listening(self, *args):
         if self.view.listen_var.get():
+            # Start audio monitoring and storage session
+            try:
+                storage_started = self.storage_manager.start_session()
+                if not storage_started:
+                    logger.warning("Failed to start storage session, but continuing with audio monitoring")
+            except Exception as e:
+                logger.error(f"Error starting storage session: {e}")
+            
             self.app_controller.start_listening()
         else:
+            # Stop audio monitoring and end storage session
             self.app_controller.stop_listening()
+            try:
+                self.storage_manager.end_session()
+            except Exception as e:
+                logger.error(f"Error ending storage session: {e}")
 
     def request_new_ai_thread_ui(self):
         logger.info("UI 'New Thread' button clicked.")
@@ -74,12 +93,36 @@ class UIController:
         logger.info("UI 'Reconnect' button clicked.")
         self.update_browser_status("info", "Status: Manual reconnection requested...")
         
-        # Disable the reconnect button during reconnection
-        if hasattr(self.view, 'reconnect_button'):
-            self.view.reconnect_button.config(state='disabled')
+        # Note: Dropdown doesn't need to be disabled as it resets after selection
         
         # Request manual reconnection from app controller
         self.app_controller.request_manual_reconnection()
+
+    def request_manual_audio_reconnection(self):
+        logger.info("UI 'Reconnect Audio' button clicked.")
+        self.update_browser_status("info", "Status: Manual audio reconnection requested...")
+        
+        # Note: Dropdown doesn't need to be disabled as it resets after selection
+        
+        # Request manual audio reconnection from app controller
+        self.app_controller.request_manual_audio_reconnection()
+
+    def on_reconnect_selection(self, selected_option: str):
+        """Handle reconnect dropdown selection."""
+        if selected_option == "Browser":
+            logger.info("UI Reconnect dropdown: Browser selected")
+            self.request_manual_reconnection()
+        elif selected_option == "Audio":
+            logger.info("UI Reconnect dropdown: Audio selected")
+            self.request_manual_audio_reconnection()
+        elif selected_option == "Both":
+            logger.info("UI Reconnect dropdown: Both selected")
+            self.update_browser_status("info", "Status: Reconnecting browser and audio...")
+            self.request_manual_reconnection()
+            self.request_manual_audio_reconnection()
+        
+        # Reset dropdown to default after selection
+        self.view.reconnect_var.set("Reconnect")
 
     def add_topic_to_queue(self, topic: Topic):
         self.topic_queue.put(topic)
@@ -89,6 +132,15 @@ class UIController:
             try:
                 topic = self.topic_queue.get(timeout=0.1)
                 self.topics.append(topic)
+                
+                # Store topic to persistent storage
+                try:
+                    storage_success = self.storage_manager.store_topic(topic)
+                    if not storage_success:
+                        logger.warning(f"Failed to store topic to file: {topic.text[:50]}...")
+                except Exception as e:
+                    logger.error(f"Error storing topic to file: {e}")
+                
                 logger.info(f"Added new topic from {topic.source}: {topic.text[:50]}...")
                 self.topic_queue.task_done()
             except queue.Empty:
@@ -103,19 +155,36 @@ class UIController:
         for i, topic in enumerate(self.topics):
             self.view.topic_listbox.insert(tk.END, topic.get_display_text())
             
-            # Apply color based on selection state and last-clicked status
+            # Determine if we should show visual indication for submitted topics
+            show_submitted_indication = not self.get_delete_submitted_preference() and topic.submitted
+            
+            # Apply color based on selection state, last-clicked status, and submitted status
             if i == self.last_clicked_index:
                 # Last clicked topic gets special highlighting
                 if topic.selected:
                     # Last clicked + selected = darker blue
-                    self.view.topic_listbox.itemconfig(i, {'bg': '#a0a0ff'})
+                    bg_color = '#a0a0ff'
                 else:
                     # Last clicked + deselected = very light blue
-                    self.view.topic_listbox.itemconfig(i, {'bg': '#f0f0ff'})
+                    bg_color = '#f0f0ff'
+                
+                # Apply submitted text color if needed
+                if show_submitted_indication:
+                    self.view.topic_listbox.itemconfig(i, {'bg': bg_color, 'fg': '#808080'})
+                else:
+                    self.view.topic_listbox.itemconfig(i, {'bg': bg_color})
+                    
             elif topic.selected:
                 # Regular selected = normal blue
-                self.view.topic_listbox.itemconfig(i, {'bg': '#d0d0ff'})
-            # Deselected topics use default white background (no itemconfig needed)
+                if show_submitted_indication:
+                    self.view.topic_listbox.itemconfig(i, {'bg': '#d0d0ff', 'fg': '#808080'})
+                else:
+                    self.view.topic_listbox.itemconfig(i, {'bg': '#d0d0ff'})
+            else:
+                # Deselected topics - apply submitted indication if needed
+                if show_submitted_indication:
+                    self.view.topic_listbox.itemconfig(i, {'fg': '#808080'})
+                # Otherwise use default white background and black text (no itemconfig needed)
             
             # Note: Removed selection_set calls to prevent overriding custom colors
         
@@ -231,6 +300,13 @@ class UIController:
     def submit_all_topics(self):
         self.submit_selected_topics(select_all_override=True)
 
+    def _format_topic_for_copy(self, topic: Topic, keep_prefix: bool) -> str:
+        """Format a topic for copying based on prefix preference."""
+        if keep_prefix:
+            return f"[{topic.source}] {topic.text}"
+        else:
+            return topic.text
+
     def copy_selected_topics(self, select_all_override=False):
         context = self.view.context_text.get(1.0, tk.END).strip()
         
@@ -239,8 +315,10 @@ class UIController:
             self.update_browser_status("warning", "Status: No topics to copy.")
             return
 
+        keep_prefix = self.view.get_keep_prefix_state()
+        
         messages = [f"[CONTEXT] {context}"] if context else []
-        messages.extend([f"[{t.source}] {t.text}" for t in selected_topic_objects])
+        messages.extend([self._format_topic_for_copy(t, keep_prefix) for t in selected_topic_objects])
         
         consolidated_text = "\n".join(messages)
         pyperclip.copy(consolidated_text)
@@ -252,40 +330,50 @@ class UIController:
     def clear_successfully_submitted_topics(self, submitted_topics: List[Topic]):
         if not submitted_topics:
             return
+        
+        delete_submitted = self.get_delete_submitted_preference()
         submitted_ids = {id(t) for t in submitted_topics}
         
-        # Check if the last clicked topic is being removed and if it was selected
-        should_reset_last_clicked = False
-        last_clicked_topic = None
-        
-        if 0 <= self.last_clicked_index < len(self.topics):
-            last_clicked_topic = self.topics[self.last_clicked_index]
-            last_clicked_topic_id = id(last_clicked_topic)
-            if last_clicked_topic_id in submitted_ids:
-                # Only reset if the last clicked topic was selected (being submitted)
-                should_reset_last_clicked = last_clicked_topic.selected
-        
-        # Remove submitted topics
-        self.topics = [t for t in self.topics if id(t) not in submitted_ids]
-        
-        # Apply reset logic or adjust index
-        if should_reset_last_clicked:
-            self.last_clicked_index = -1
-            self.clear_full_text_display()
-        elif last_clicked_topic is not None and id(last_clicked_topic) not in submitted_ids:
-            # Find the new index of the last clicked topic (if it wasn't submitted)
-            try:
-                self.last_clicked_index = self.topics.index(last_clicked_topic)
-            except ValueError:
-                # Topic not found (shouldn't happen, but safety check)
+        if not delete_submitted:
+            # Mark topics as submitted instead of removing them
+            for topic in self.topics:
+                if id(topic) in submitted_ids:
+                    topic.submitted = True
+            logger.info(f"Marked {len(submitted_topics)} topics as submitted in UI.")
+        else:
+            # Delete submitted behavior: remove submitted topics
+            # Check if the last clicked topic is being removed and if it was selected
+            should_reset_last_clicked = False
+            last_clicked_topic = None
+            
+            if 0 <= self.last_clicked_index < len(self.topics):
+                last_clicked_topic = self.topics[self.last_clicked_index]
+                last_clicked_topic_id = id(last_clicked_topic)
+                if last_clicked_topic_id in submitted_ids:
+                    # Only reset if the last clicked topic was selected (being submitted)
+                    should_reset_last_clicked = last_clicked_topic.selected
+            
+            # Remove submitted topics
+            self.topics = [t for t in self.topics if id(t) not in submitted_ids]
+            
+            # Apply reset logic or adjust index
+            if should_reset_last_clicked:
                 self.last_clicked_index = -1
                 self.clear_full_text_display()
-        elif self.last_clicked_index >= len(self.topics):
-            # Index out of bounds
-            self.last_clicked_index = -1
-            self.clear_full_text_display()
-        
-        logger.info(f"Cleared {len(submitted_topics)} submitted topics from UI.")
+            elif last_clicked_topic is not None and id(last_clicked_topic) not in submitted_ids:
+                # Find the new index of the last clicked topic (if it wasn't submitted)
+                try:
+                    self.last_clicked_index = self.topics.index(last_clicked_topic)
+                except ValueError:
+                    # Topic not found (shouldn't happen, but safety check)
+                    self.last_clicked_index = -1
+                    self.clear_full_text_display()
+            elif self.last_clicked_index >= len(self.topics):
+                # Index out of bounds
+                self.last_clicked_index = -1
+                self.clear_full_text_display()
+            
+            logger.info(f"Cleared {len(submitted_topics)} submitted topics from UI.")
 
     def clear_full_text_display(self):
         self.view.full_text.config(state="normal")
@@ -297,7 +385,18 @@ class UIController:
         level = "warning" if status_key in ["error", "browser_human_verification", "warning", "browser_input_unavailable"] else "info"
         logger.log(logging.getLevelName(level.upper()), f"UI Status Update ({status_key}): {custom_message or self.view.status_colors.get(status_key, (None, ''))[1]}")
 
+    def get_delete_submitted_preference(self) -> bool:
+        """Return the current state of the delete submitted checkbox."""
+        return self.view.delete_submitted_var.get()
+
     def on_closing(self):
         logger.info("UIController: on_closing called.")
         self.processing = False
+        
+        # Ensure storage session is properly closed
+        try:
+            self.storage_manager.end_session()
+        except Exception as e:
+            logger.error(f"Error closing storage session during shutdown: {e}")
+        
         self.app_controller.on_closing_ui_initiated()
