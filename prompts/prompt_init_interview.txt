@@ -24,11 +24,9 @@ TECHNICAL EXPERTISE: Azure, AWS, M365, D365 CE, Power Platform, Fabric, RPA, Sal
 CERTIFICATIONS: Power Platform Solution Architect, Azure AI Engineer, Fabric Analytics Engineer, PMP, Salesforce Admin, AWS Cloud Practitioner.
 
 --------------------------------------------------
-BACKGROUND CONTEXT: TARGET JOB DESCRIPTION (FLORIDA POWER & LIGHT)
+BACKGROUND CONTEXT: TARGET JOB DESCRIPTION
 --------------------------------------------------
-ROLE: Enterprise Architect
-SUMMARY: Strategic leadership role, "head of architecture," driving EA strategy.
-KEY RESPONSIBILITIES: Develop EA standards/guidelines, define roadmaps with stakeholders, create architecture blueprints, ensure alignment with business goals, lead/mentor architects, modernize systems, engage executives, establish governance, evaluate emerging tech, mitigate risks.
+This Power Platform Solutions Architect (Evangelist) role is a remote U.S.-based position with occasional travel (about 20%). It focuses on client engagement, education, and governance rather than hands-on project delivery. The architect will lead discovery sessions, workshops, demos, and webinars, represent the company at events and conferences, and guide organizations in maximizing their Power Platform adoption. Responsibilities include managing governance frameworks, maintaining the Centre of Excellence, overseeing release/documentation processes, and ensuring best practices are followed. The role requires strong communication, stakeholder engagement, and thought leadership skills, plus experience with governance, release management, and Power Platform solution strategies. Power Platform certifications, presales experience, consulting background, and Azure knowledge are desirable. with business goals, lead/mentor architects, modernize systems, engage executives, establish governance, evaluate emerging tech, mitigate risks.
 
 --------------------------------------------------
 Your Core Task & Analysis Directives

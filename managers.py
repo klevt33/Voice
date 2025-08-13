@@ -127,7 +127,7 @@ class ServiceManager:
             thread = threading.Thread(
                 name=f"Recorder{source}",
                 target=recording_thread, 
-                args=(source, self.mic_data, audio_queue, self.audio, self.state_manager.run_threads_ref, self.audio_monitor)
+                args=(source, self.mic_data, audio_queue, self, self.state_manager.run_threads_ref, self.audio_monitor)
             )
             thread.daemon = True
             self.threads.append(thread)
@@ -148,6 +148,8 @@ class ServiceManager:
             logger.info(f"Started thread: {thread.name}")
             
         return True
+
+
 
     def shutdown_services(self):
         logger.info("Shutting down services...")

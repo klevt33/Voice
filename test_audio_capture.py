@@ -304,7 +304,13 @@ class AudioTester:
         timer_thread.start()
         
         # Use the actual recording thread from audio_handler
-        recording_thread(source, mic_data, self.audio_queue, self.audio, self.run_threads)
+        # Create a simple service manager mock for testing
+        class MockServiceManager:
+            def __init__(self, audio):
+                self.audio = audio
+        
+        mock_service_manager = MockServiceManager(self.audio)
+        recording_thread(source, mic_data, self.audio_queue, mock_service_manager, self.run_threads)
         
         timer_thread.join()
     

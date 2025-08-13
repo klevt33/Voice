@@ -63,8 +63,8 @@ CHATS = {
     },
     "ChatGPT": {
         "url": "https://chatgpt.com/",
-        "prompt_init_file": r"prompts\prompt_init.txt", # Use a separate prompt for ChatGPT
-        "prompt_msg_file": r"prompts\prompt_msg.txt",   # and a separate message prompt
+        "prompt_init_file": r"prompts\prompt_init_interview.txt", # Use a separate prompt for ChatGPT
+        "prompt_msg_file": r"prompts\prompt_msg_interview.txt",   # and a separate message prompt
         # Using ID is very reliable.
         "css_selector_input": "[id='prompt-textarea']", 
         # Using data-testid is very reliable for automation.

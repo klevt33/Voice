@@ -101,37 +101,14 @@ class AudioMonitor:
     def _attempt_audio_reconnection(self, source: str):
         """
         Attempts to reconnect the audio device for a specific source.
+        For automatic error recovery, this now uses the combined reconnection approach.
         
         Args:
             source: The audio source to reconnect ("ME" or "OTHERS")
         """
-        with self._reconnection_lock:
-            if self.is_reconnecting:
-                logger.info(f"Audio reconnection already in progress for {source}, skipping.")
-                return
-                
-            self.is_reconnecting = True
-        
-        try:
-            logger.info(f"Starting audio reconnection process for {source}...")
-            self._update_connection_state(AudioConnectionState.RECONNECTING)
-            
-            # Update UI to show reconnecting status
-            self.ui_controller.update_browser_status("warning", f"Status: Audio device {source} reconnecting...")
-            
-            success = self._reconnect_audio_source_with_backoff(source)
-            
-            if success:
-                logger.info(f"Audio reconnection successful for {source}!")
-                self._update_connection_state(AudioConnectionState.CONNECTED)
-                self.ui_controller.update_browser_status("success", f"Status: Audio device {source} reconnected.")
-            else:
-                logger.error(f"All audio reconnection attempts failed for {source}.")
-                self._update_connection_state(AudioConnectionState.FAILED)
-                self.ui_controller.update_browser_status("error", f"Status: Audio device {source} connection failed.")
-                
-        finally:
-            self.is_reconnecting = False
+        logger.info(f"Audio error detected on {source}, attempting full audio reconnection...")
+        # Use the combined reconnection approach for consistency
+        return self.reconnect_all_audio_sources()
     
     def _reconnect_audio_source_with_backoff(self, source: str) -> bool:
         """
@@ -188,6 +165,57 @@ class AudioMonitor:
         logger.error(f"All {self.max_retries} audio reconnection attempts failed for {source}.")
         return False
     
+    def _refresh_microphone_list(self) -> bool:
+        """
+        Refreshes the list of available microphones without changing device assignments.
+        Simply scans for available devices and logs what's found.
+        
+        Returns:
+            True if microphone refresh succeeded, False otherwise
+        """
+        try:
+            logger.info("Refreshing microphone list...")
+            
+            if not self.service_manager.audio:
+                logger.warning("PyAudio not available for microphone refresh")
+                return False
+            
+            # Get current device count
+            device_count = self.service_manager.audio.get_device_count()
+            logger.info(f"Found {device_count} total audio devices")
+            
+            # Count available input devices
+            input_device_count = 0
+            for i in range(device_count):
+                try:
+                    device_info = self.service_manager.audio.get_device_info_by_index(i)
+                    if device_info['maxInputChannels'] > 0:  # Only input devices
+                        input_device_count += 1
+                        logger.debug(f"Available input device {i}: {device_info['name']}")
+                except Exception as e:
+                    logger.warning(f"Error getting info for device {i}: {e}")
+            
+            logger.info(f"Found {input_device_count} input devices")
+            
+            # Check what the current microphone indices point to now (but don't change them)
+            for source in ["ME", "OTHERS"]:
+                current_index = self.service_manager.mic_data[source]["index"]
+                
+                try:
+                    device_info = self.service_manager.audio.get_device_info_by_index(current_index)
+                    if device_info['maxInputChannels'] > 0:
+                        logger.info(f"{source} microphone index {current_index} now points to: {device_info['name']}")
+                    else:
+                        logger.warning(f"{source} microphone index {current_index} is not an input device: {device_info['name']}")
+                except Exception as e:
+                    logger.warning(f"{source} microphone index {current_index} is not accessible: {e}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error refreshing microphone list: {e}")
+            return False
+
     def _perform_audio_reconnection(self, source: str) -> bool:
         """
         Performs a single audio reconnection attempt for a specific source.
@@ -216,12 +244,26 @@ class AudioMonitor:
                     finally:
                         mic_info["stream"] = None
             
-            # Step 2: Reinitialize PyAudio if needed
-            if not self.service_manager.audio:
-                logger.info("Reinitializing PyAudio...")
-                self.service_manager.audio = pyaudio.PyAudio()
+            # Step 2: Force reinitialize PyAudio to refresh device list
+            # This is crucial when devices are plugged/unplugged as device indices can shift
+            logger.info("Force reinitializing PyAudio to refresh device list...")
+            if self.service_manager.audio:
+                try:
+                    self.service_manager.audio.terminate()
+                    logger.info("Terminated existing PyAudio instance")
+                except Exception as e:
+                    logger.warning(f"Error terminating existing PyAudio: {e}")
             
-            # Step 3: Test the specific microphone device
+            # Create fresh PyAudio instance
+            self.service_manager.audio = pyaudio.PyAudio()
+            logger.info("Created fresh PyAudio instance")
+            
+            # Step 3: Refresh microphone list with the new PyAudio instance
+            if not self._refresh_microphone_list():
+                logger.warning(f"Failed to refresh microphone list for {source}")
+                # Continue anyway - maybe the devices are still accessible
+            
+            # Step 4: Test the specific microphone device with fresh device info
             mic_index = self.service_manager.mic_data[source]["index"]
             try:
                 device_info = self.service_manager.audio.get_device_info_by_index(mic_index)
@@ -230,7 +272,7 @@ class AudioMonitor:
                 logger.error(f"Cannot access {source} microphone with index {mic_index}: {e}")
                 return False
             
-            # Step 4: Create a test stream to verify the device works
+            # Step 5: Create a test stream to verify the device works
             try:
                 from config import FORMAT, CHANNELS, SAMPLE_RATE, CHUNK_SIZE
                 test_stream = self.service_manager.audio.open(
@@ -242,15 +284,16 @@ class AudioMonitor:
                     frames_per_buffer=CHUNK_SIZE
                 )
                 
-                # Test reading a small amount of data
+                # Test reading a chunk to ensure the device works
                 test_data = test_stream.read(CHUNK_SIZE, exception_on_overflow=False)
+                logger.debug(f"Test read successful for {source}")
                 
                 # Close the test stream
                 test_stream.close()
                 
                 logger.info(f"Audio device test successful for {source}")
                 
-                # Step 5: The recording thread will automatically create a new stream
+                # Step 6: The recording thread will automatically create a new stream
                 # when it detects the device is working again
                 logger.info(f"Audio reconnection completed for {source}")
                 return True
@@ -278,3 +321,143 @@ class AudioMonitor:
     def is_reconnection_in_progress(self) -> bool:
         """Returns True if an audio reconnection is currently in progress."""
         return self.is_reconnecting
+    
+    def reconnect_all_audio_sources(self) -> bool:
+        """
+        Reconnects both ME and OTHERS audio sources together with consolidated status updates.
+        
+        Returns:
+            True if both sources reconnected successfully, False otherwise
+        """
+        with self._reconnection_lock:
+            if self.is_reconnecting:
+                logger.info("Audio reconnection already in progress, skipping.")
+                return False
+                
+            self.is_reconnecting = True
+        
+        try:
+            logger.info("Starting audio reconnection process for both ME and OTHERS...")
+            self._update_connection_state(AudioConnectionState.RECONNECTING)
+            
+            # Update UI to show reconnecting status
+            self.ui_controller.update_browser_status("warning", "Status: Refreshing microphones and reconnecting audio...")
+            
+            # Perform the reconnection process once for both sources
+            success = self._perform_combined_audio_reconnection()
+            
+            if success:
+                logger.info("Audio reconnection successful for both sources!")
+                self._update_connection_state(AudioConnectionState.CONNECTED)
+                
+                # Get device names for consolidated success message
+                try:
+                    me_index = self.service_manager.mic_data["ME"]["index"]
+                    others_index = self.service_manager.mic_data["OTHERS"]["index"]
+                    me_device = self.service_manager.audio.get_device_info_by_index(me_index)['name']
+                    others_device = self.service_manager.audio.get_device_info_by_index(others_index)['name']
+                    
+                    # Truncate device names if too long
+                    me_short = me_device[:20] + "..." if len(me_device) > 23 else me_device
+                    others_short = others_device[:20] + "..." if len(others_device) > 23 else others_device
+                    
+                    self.ui_controller.update_browser_status("success", f"Status: Audio reconnected - ME: {me_short}, OTHERS: {others_short}")
+                except Exception:
+                    self.ui_controller.update_browser_status("success", "Status: Audio devices reconnected successfully.")
+            else:
+                logger.error("Audio reconnection failed for one or both sources.")
+                self._update_connection_state(AudioConnectionState.FAILED)
+                
+                me_index = self.service_manager.mic_data["ME"]["index"]
+                others_index = self.service_manager.mic_data["OTHERS"]["index"]
+                self.ui_controller.update_browser_status("error", f"Status: Audio reconnection failed - Check ME (index {me_index}) and OTHERS (index {others_index}) in config.py")
+            
+            return success
+                
+        finally:
+            self.is_reconnecting = False
+    
+    def _perform_combined_audio_reconnection(self) -> bool:
+        """
+        Performs audio reconnection for both sources with a single PyAudio reinitialization.
+        
+        Returns:
+            True if both sources reconnected successfully, False otherwise
+        """
+        try:
+            logger.info("Performing combined audio reconnection...")
+            
+            # Step 1: Clean up existing streams for both sources
+            for source in ["ME", "OTHERS"]:
+                if source in self.service_manager.mic_data:
+                    mic_info = self.service_manager.mic_data[source]
+                    if mic_info.get("stream"):
+                        try:
+                            stream = mic_info["stream"]
+                            if stream.is_active():
+                                stream.stop_stream()
+                            stream.close()
+                            logger.info(f"Closed existing audio stream for {source}")
+                        except Exception as e:
+                            logger.warning(f"Error closing existing stream for {source}: {e}")
+                        finally:
+                            mic_info["stream"] = None
+            
+            # Step 2: Force reinitialize PyAudio to refresh device list
+            logger.info("Force reinitializing PyAudio to refresh device list...")
+            if self.service_manager.audio:
+                try:
+                    self.service_manager.audio.terminate()
+                    logger.info("Terminated existing PyAudio instance")
+                except Exception as e:
+                    logger.warning(f"Error terminating existing PyAudio: {e}")
+            
+            # Create fresh PyAudio instance
+            self.service_manager.audio = pyaudio.PyAudio()
+            logger.info("Created fresh PyAudio instance")
+            
+            # Step 3: Refresh microphone list with the new PyAudio instance
+            if not self._refresh_microphone_list():
+                logger.warning("Failed to refresh microphone list")
+                # Continue anyway - maybe the devices are still accessible
+            
+            # Step 4: Test both microphone devices
+            both_sources_working = True
+            
+            for source in ["ME", "OTHERS"]:
+                mic_index = self.service_manager.mic_data[source]["index"]
+                try:
+                    device_info = self.service_manager.audio.get_device_info_by_index(mic_index)
+                    logger.info(f"Testing {source} microphone: {device_info['name']} (index {mic_index})")
+                    
+                    # Test the device by creating a stream
+                    from config import FORMAT, CHANNELS, SAMPLE_RATE, CHUNK_SIZE
+                    test_stream = self.service_manager.audio.open(
+                        format=FORMAT,
+                        channels=CHANNELS,
+                        rate=SAMPLE_RATE,
+                        input=True,
+                        input_device_index=mic_index,
+                        frames_per_buffer=CHUNK_SIZE
+                    )
+                    
+                    # Test reading a chunk
+                    test_data = test_stream.read(CHUNK_SIZE, exception_on_overflow=False)
+                    test_stream.close()
+                    
+                    logger.info(f"Audio device test successful for {source}")
+                    
+                except Exception as e:
+                    logger.error(f"Audio device test failed for {source}: {e}")
+                    both_sources_working = False
+            
+            if both_sources_working:
+                logger.info("Combined audio reconnection completed successfully")
+                return True
+            else:
+                logger.error("Combined audio reconnection failed - one or more devices not working")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during combined audio reconnection: {e}")
+            return False

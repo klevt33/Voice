@@ -82,6 +82,23 @@ class UIController:
                 self.storage_manager.end_session()
             except Exception as e:
                 logger.error(f"Error ending storage session: {e}")
+    
+    def set_listening_state(self, is_listening: bool):
+        """
+        Programmatically set the listening toggle state without triggering callbacks.
+        Used during audio reconnection to reflect state changes.
+        """
+        # Get all current traces and remove them temporarily
+        traces = self.view.listen_var.trace_info()
+        for trace in traces:
+            if trace[1] == "write":
+                self.view.listen_var.trace_remove("write", trace[2])
+        
+        # Set the value
+        self.view.listen_var.set(is_listening)
+        
+        # Re-add the trace
+        self.view.listen_var.trace_add("write", self.toggle_listening)
 
     def request_new_ai_thread_ui(self):
         logger.info("UI 'New Thread' button clicked.")

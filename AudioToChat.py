@@ -188,22 +188,43 @@ class AudioToChat:
             # Run audio reconnection in a separate thread to avoid blocking UI
             def _audio_reconnect():
                 try:
-                    # Attempt reconnection for both audio sources
-                    for source in ["ME", "OTHERS"]:
-                        logger.info(f"Manual audio reconnection requested for {source}")
-                        self.service_manager.audio_monitor._attempt_audio_reconnection(source)
+                    logger.info("Manual audio reconnection requested")
                     
-                    # Dropdown automatically resets, no need to re-enable
+                    # Check if listening is currently active and turn it off if needed
+                    was_listening = self.state_manager.is_listening()
+                    if was_listening:
+                        logger.info("Turning off listening mode for audio reconnection")
+                        self.state_manager.stop_listening()
+                        # Update UI toggle to reflect the state change
+                        self.ui_controller.set_listening_state(False)
+                        # Give threads a moment to stop listening
+                        time.sleep(0.5)
+                    
+                    # Update UI to show that we're refreshing the microphone list
+                    self.ui_controller.update_browser_status("info", "Status: Refreshing microphone list...")
+                    
+                    # Attempt reconnection for both audio sources together
+                    success = self.service_manager.audio_monitor.reconnect_all_audio_sources()
+                    
+                    if success and was_listening:
+                        # Restart listening if it was on before
+                        logger.info("Restarting listening mode after successful audio reconnection")
+                        time.sleep(0.5)  # Give a moment for reconnection to settle
+                        self.state_manager.start_listening()
+                        # Update UI toggle to reflect the state change
+                        self.ui_controller.set_listening_state(True)
                     
                 except Exception as e:
                     logger.error(f"Error during manual audio reconnection: {e}")
-                    # Dropdown automatically resets, no need to re-enable
+                    self.ui_controller.update_browser_status("error", f"Status: Audio reconnection error - {str(e)}")
             
             import threading
+            import time
             audio_reconnect_thread = threading.Thread(target=_audio_reconnect, daemon=True)
             audio_reconnect_thread.start()
         else:
             logger.error("Cannot perform manual audio reconnection: audio monitor not available.")
+            self.ui_controller.update_browser_status("error", "Status: Audio monitor not available")
 
     def update_ui_after_submission(self, status: str, submitted_topics: List[Topic]):
         if not self.root or not self.root.winfo_exists():
