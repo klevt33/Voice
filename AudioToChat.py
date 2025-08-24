@@ -195,13 +195,11 @@ class AudioToChat:
                     if was_listening:
                         logger.info("Turning off listening mode for audio reconnection")
                         self.state_manager.stop_listening()
-                        # Update UI toggle to reflect the state change
-                        self.ui_controller.set_listening_state(False)
                         # Give threads a moment to stop listening
                         time.sleep(0.5)
                     
-                    # Update UI to show that we're refreshing the microphone list
-                    self.ui_controller.update_browser_status("info", "Status: Refreshing microphone list...")
+                    # Update UI to show that we're refreshing the microphone list (thread-safe)
+                    self.root.after(0, lambda: self.ui_controller.update_browser_status("info", "Status: Refreshing microphone list..."))
                     
                     # Attempt reconnection for both audio sources together
                     success = self.service_manager.audio_monitor.reconnect_all_audio_sources()
@@ -211,12 +209,11 @@ class AudioToChat:
                         logger.info("Restarting listening mode after successful audio reconnection")
                         time.sleep(0.5)  # Give a moment for reconnection to settle
                         self.state_manager.start_listening()
-                        # Update UI toggle to reflect the state change
-                        self.ui_controller.set_listening_state(True)
                     
                 except Exception as e:
                     logger.error(f"Error during manual audio reconnection: {e}")
-                    self.ui_controller.update_browser_status("error", f"Status: Audio reconnection error - {str(e)}")
+                    # Thread-safe UI update
+                    self.root.after(0, lambda: self.ui_controller.update_browser_status("error", f"Status: Audio reconnection error - {str(e)}"))
             
             import threading
             import time

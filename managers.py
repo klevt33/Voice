@@ -1,14 +1,14 @@
 # managers.py
 import logging
 import threading
-import pyaudio
+import pyaudiowpatch as pyaudio
 from typing import Dict, Any, Optional
 
 from audio_handler import recording_thread
 from transcription import transcription_thread
 from browser import BrowserManager, load_single_chat_prompt
 from audio_monitor import AudioMonitor
-from config import MIC_INDEX_ME, MIC_INDEX_OTHERS, CHAT, CHATS
+from config import CHAT, CHATS
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,8 @@ class ServiceManager:
         self.audio_monitor: Optional[AudioMonitor] = None
         self.threads = []
         self.mic_data = {
-            "ME": {"index": MIC_INDEX_ME, "stream": None},
-            "OTHERS": {"index": MIC_INDEX_OTHERS, "stream": None}
+            "ME": {"device_info": None, "stream": None},
+            "OTHERS": {"device_info": None, "stream": None}
         }
 
     def initialize_audio(self) -> bool:
@@ -65,9 +65,45 @@ class ServiceManager:
             self.audio = pyaudio.PyAudio()
             # Initialize audio monitor
             self.audio_monitor = AudioMonitor(self, self.ui_controller)
+            
+            # Detect and validate default audio devices
+            from audio_device_utils import get_default_microphone_info, get_default_speakers_loopback_info, validate_device_info, format_device_info
+            
+            self.ui_controller.update_browser_status("info", "Status: Detecting audio devices...")
+            
+            # Detect default microphone
+            me_device = get_default_microphone_info(self.audio)
+            if not validate_device_info(me_device, "ME"):
+                self.ui_controller.update_browser_status("error", "Status: No default microphone found")
+                return False
+            
+            # Detect default speakers loopback
+            others_device = get_default_speakers_loopback_info(self.audio)
+            if not validate_device_info(others_device, "OTHERS"):
+                self.ui_controller.update_browser_status("warning", "Status: No system audio loopback found - OTHERS audio disabled")
+                # Continue without OTHERS audio
+                others_device = None
+            
+            # Store device info
+            self.mic_data["ME"]["device_info"] = me_device
+            self.mic_data["OTHERS"]["device_info"] = others_device
+            
+            # Update status with detected devices
+            me_name = me_device['name'][:20] + "..." if len(me_device['name']) > 23 else me_device['name']
+            if others_device:
+                others_name = others_device['name'][:20] + "..." if len(others_device['name']) > 23 else others_device['name']
+                self.ui_controller.update_browser_status("success", f"Status: Audio devices detected - ME: {me_name}, OTHERS: {others_name}")
+            else:
+                self.ui_controller.update_browser_status("success", f"Status: Audio device detected - ME: {me_name} (OTHERS disabled)")
+            
+            logger.info(f"Audio initialization successful - ME: {format_device_info(me_device)}")
+            if others_device:
+                logger.info(f"Audio initialization successful - OTHERS: {format_device_info(others_device)}")
+            
             return True
         except Exception as e:
             logger.error(f"Failed to initialize PyAudio: {e}")
+            self.ui_controller.update_browser_status("error", f"Status: Audio initialization failed - {str(e)}")
             return False
 
     def initialize_browser(self, ui_update_callback) -> bool:

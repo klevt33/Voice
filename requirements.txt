@@ -66,6 +66,8 @@ protobuf==6.31.1
     # via onnxruntime
 pyaudio==0.2.14
     # via -r requirements.in
+pyaudiowpatch==0.2.14.1
+    # via -r requirements.in
 pycparser==2.22
     # via cffi
 pygetwindow==0.0.9

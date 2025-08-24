@@ -11,9 +11,9 @@ DLL_PATHS = [
 ]
 
 # Audio configuration
-# MIC_INDEX_OTHERS = 8   # Voicemeeter Out B1 index
-MIC_INDEX_OTHERS = 7   # Voicemeeter Out B1 index
-MIC_INDEX_ME = 1       # My microphone index
+# Microphone devices are now automatically detected:
+# - ME: Uses system default microphone
+# - OTHERS: Uses system default speakers loopback (requires pyaudiowpatch)
 CHUNK_SIZE = 1024      # Buffer size for processing
 SAMPLE_RATE = 44100    # Audio sampling rate
 FORMAT = pyaudio.paInt16  # Audio format

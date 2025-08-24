@@ -1,5 +1,5 @@
 # audio_handler.py
-import pyaudio
+import pyaudiowpatch as pyaudio
 import numpy as np
 import time
 from datetime import datetime
@@ -9,6 +9,7 @@ import queue
 import logging
 from typing import List, Dict, Any, Optional
 from config import SAMPLE_RATE, CHUNK_SIZE, FORMAT, CHANNELS, SILENCE_THRESHOLD, SILENCE_DURATION, MAX_RECORDING_DURATION
+from audio_device_utils import get_default_microphone_info, get_default_speakers_loopback_info, validate_device_info, format_device_info
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def get_audio_level(data: bytes) -> float:
     return np.mean(np.abs(data_np))
 
 def process_recording(frames: List[bytes], source: str, audio: pyaudio.PyAudio, 
-                     audio_queue: queue.Queue) -> None:
+                     audio_queue: queue.Queue, device_info: Dict[str, Any] = None) -> None:
     """Process the recorded frames and add to in-memory queue"""
     if not frames:
         logger.warning(f"No frames to process for {source}")
@@ -62,11 +63,24 @@ def process_recording(frames: List[bytes], source: str, audio: pyaudio.PyAudio,
     logger.info(f"Processing new audio segment from {source} ({len(frames)} frames)")
     
     try:
+        # Use device-specific settings if available, otherwise fall back to config defaults
+        if device_info:
+            sample_rate = int(device_info.get("defaultSampleRate", SAMPLE_RATE))
+            # For OTHERS (loopback devices), use native channels to preserve audio quality
+            # For ME (microphones), limit to CHANNELS for consistency
+            if source == "OTHERS":
+                channels = int(device_info.get("maxInputChannels", CHANNELS))
+            else:
+                channels = min(int(device_info.get("maxInputChannels", CHANNELS)), CHANNELS)
+        else:
+            sample_rate = SAMPLE_RATE
+            channels = CHANNELS
+        
         # Create audio segment object
         audio_segment = AudioSegment(
             frames=frames,
-            sample_rate=SAMPLE_RATE,
-            channels=CHANNELS,
+            sample_rate=sample_rate,
+            channels=channels,
             sample_width=audio.get_sample_size(FORMAT),
             source=source
         )
@@ -133,11 +147,30 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
     logger.info(f"Starting recording thread for {source}")
     
     mic = mic_data[source]
-    mic_index = mic["index"]
     
     def get_current_audio():
         """Get the current PyAudio instance from service manager"""
         return service_manager.audio if service_manager else None
+    
+    def detect_device_for_source():
+        """Detect the appropriate device for the given source"""
+        current_audio = get_current_audio()
+        if not current_audio:
+            logger.error(f"No PyAudio instance available for {source}")
+            return None
+            
+        if source == "ME":
+            device_info = get_default_microphone_info(current_audio)
+        elif source == "OTHERS":
+            device_info = get_default_speakers_loopback_info(current_audio)
+        else:
+            logger.error(f"Unknown audio source: {source}")
+            return None
+            
+        if not validate_device_info(device_info, source):
+            return None
+            
+        return device_info
     
     def create_audio_stream():
         """Helper function to create audio stream with error handling"""
@@ -146,19 +179,35 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
             logger.error(f"No PyAudio instance available for {source}")
             return None
             
+        # Detect device dynamically
+        device_info = detect_device_for_source()
+        if not device_info:
+            logger.error(f"Failed to detect device for {source}")
+            return None
+            
         try:
-            # Get fresh device info each time
-            device_info = current_audio.get_device_info_by_index(mic_index)
-            logger.debug(f"Creating stream for {source} microphone: {device_info['name']} (index {mic_index})")
+            logger.debug(f"Creating stream for {source}: {format_device_info(device_info)}")
+            
+            # Use device's native settings
+            # For OTHERS (loopback devices), use native channels to preserve audio quality
+            # For ME (microphones), limit to CHANNELS for consistency
+            if source == "OTHERS":
+                channels = int(device_info["maxInputChannels"])
+            else:
+                channels = min(int(device_info["maxInputChannels"]), CHANNELS)
+            sample_rate = int(device_info["defaultSampleRate"])
             
             stream = current_audio.open(
                 format=FORMAT,
-                channels=CHANNELS,
-                rate=SAMPLE_RATE,
+                channels=channels,
+                rate=sample_rate,
                 input=True,
-                input_device_index=mic_index,
+                input_device_index=device_info["index"],
                 frames_per_buffer=CHUNK_SIZE
             )
+            
+            # Store device info and stream in mic data
+            mic["device_info"] = device_info
             mic["stream"] = stream
             return stream
         except Exception as e:
@@ -167,15 +216,13 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 audio_monitor.handle_audio_error(source, e)
             return None
     
-    # Initial device info check
-    try:
-        current_audio = get_current_audio()
-        if current_audio:
-            device_info = current_audio.get_device_info_by_index(mic_index)
-            logger.info(f"Starting {source} recording thread for: {device_info['name']} (index {mic_index})")
-    except Exception as e:
-        logger.error(f"Error accessing {source} microphone with index {mic_index}: {e}")
+    # Initial device detection
+    device_info = detect_device_for_source()
+    if not device_info:
+        logger.error(f"Failed to detect initial device for {source}")
         return
+        
+    logger.info(f"Starting {source} recording thread for: {format_device_info(device_info)}")
     
     stream = create_audio_stream()
     if not stream:
@@ -218,8 +265,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 
                 stream = create_audio_stream()
                 if not stream:
-                    logger.error(f"Failed to recreate audio stream for {source}, retrying in 5 seconds...")
-                    time.sleep(5)
+                    logger.error(f"Failed to recreate audio stream for {source}, retrying in 2 seconds...")
+                    time.sleep(2)  # Shorter retry delay
                     continue
             
             # 1. Wait for sound to begin
@@ -284,7 +331,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
             if mic["frames"]:
                 current_audio = get_current_audio()
                 if current_audio:
-                    process_recording(mic["frames"], source, current_audio, audio_queue)
+                    device_info = mic.get("device_info")
+                    process_recording(mic["frames"], source, current_audio, audio_queue, device_info)
                 mic["frames"] = []
             
             # 4. If max duration was reached, check if sound continues for new fragment
@@ -340,7 +388,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                         if mic["frames"]:
                             current_audio = get_current_audio()
                             if current_audio:
-                                process_recording(mic["frames"], source, current_audio, audio_queue)
+                                device_info = mic.get("device_info")
+                                process_recording(mic["frames"], source, current_audio, audio_queue, device_info)
                             mic["frames"] = []
                 except Exception as e:
                     if run_threads_ref["active"]:

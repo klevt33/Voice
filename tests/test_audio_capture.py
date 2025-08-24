@@ -6,12 +6,14 @@ This script tests the audio capture functionality from audio_handler.py
 It can save captured audio to files and optionally play them back for quality testing.
 """
 
-import os
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import threading
 import queue
-import pyaudio
+import pyaudiowpatch as pyaudio
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -20,9 +22,9 @@ from typing import Dict, Any, Optional
 from audio_handler import AudioSegment, get_audio_level, _wait_for_sound, process_recording
 from config import (
     SAMPLE_RATE, CHUNK_SIZE, FORMAT, CHANNELS, 
-    SILENCE_THRESHOLD, SILENCE_DURATION, MAX_RECORDING_DURATION,
-    MIC_INDEX_ME, MIC_INDEX_OTHERS
+    SILENCE_THRESHOLD, SILENCE_DURATION, MAX_RECORDING_DURATION
 )
+from audio_device_utils import get_default_microphone_info, get_default_speakers_loopback_info, validate_device_info, format_device_info
 
 # Configure logging
 logging.basicConfig(
@@ -41,28 +43,75 @@ class AudioTester:
         # Create test recordings directory
         os.makedirs(self.test_recordings_dir, exist_ok=True)
         
-        # Available microphones
-        self.available_mics = {
-            "ME": {"index": MIC_INDEX_ME, "stream": None, "recording": False, "frames": []},
-            "OTHERS": {"index": MIC_INDEX_OTHERS, "stream": None, "recording": False, "frames": []}
-        }
+        # Detect available microphones dynamically
+        self.available_mics = self._detect_audio_devices()
         
         logger.info(f"Test recordings will be saved to: {os.path.abspath(self.test_recordings_dir)}")
     
+    def _detect_audio_devices(self):
+        """Detect default audio devices for testing"""
+        devices = {}
+        
+        # Detect ME device (default microphone)
+        me_device = get_default_microphone_info(self.audio)
+        if validate_device_info(me_device, "ME"):
+            devices["ME"] = {
+                "device_info": me_device,
+                "stream": None,
+                "recording": False,
+                "frames": []
+            }
+            logger.info(f"ME device detected: {format_device_info(me_device)}")
+        else:
+            logger.error("No valid ME device found")
+            devices["ME"] = {"device_info": None, "stream": None, "recording": False, "frames": []}
+        
+        # Detect OTHERS device (default speakers loopback)
+        others_device = get_default_speakers_loopback_info(self.audio)
+        if validate_device_info(others_device, "OTHERS"):
+            devices["OTHERS"] = {
+                "device_info": others_device,
+                "stream": None,
+                "recording": False,
+                "frames": []
+            }
+            logger.info(f"OTHERS device detected: {format_device_info(others_device)}")
+        else:
+            logger.warning("No valid OTHERS device found - system audio capture disabled")
+            devices["OTHERS"] = {"device_info": None, "stream": None, "recording": False, "frames": []}
+        
+        return devices
+    
     def list_audio_devices(self):
-        """List all available audio input devices"""
+        """List all available audio input devices and show detected defaults"""
         print("\n=== Available Audio Devices ===")
         device_count = self.audio.get_device_count()
         
+        # Show detected default devices first
+        print("\n--- Detected Default Devices ---")
+        me_device = self.available_mics["ME"]["device_info"]
+        others_device = self.available_mics["OTHERS"]["device_info"]
+        
+        if me_device:
+            print(f"ME (Default Microphone): {format_device_info(me_device)}")
+        else:
+            print("ME (Default Microphone): Not detected")
+        
+        if others_device:
+            print(f"OTHERS (Default Speakers Loopback): {format_device_info(others_device)}")
+        else:
+            print("OTHERS (Default Speakers Loopback): Not detected")
+        
+        print("\n--- All Input Devices ---")
         for i in range(device_count):
             try:
                 device_info = self.audio.get_device_info_by_index(i)
                 if device_info['maxInputChannels'] > 0:  # Only show input devices
                     status = ""
-                    if i == MIC_INDEX_ME:
-                        status = " (configured as ME mic)"
-                    elif i == MIC_INDEX_OTHERS:
-                        status = " (configured as OTHERS mic)"
+                    if me_device and i == me_device['index']:
+                        status = " (detected as ME)"
+                    elif others_device and i == others_device['index']:
+                        status = " (detected as OTHERS)"
                     
                     print(f"  {i}: {device_info['name']}{status}")
                     print(f"      Max input channels: {device_info['maxInputChannels']}")
@@ -74,17 +123,30 @@ class AudioTester:
     def test_audio_levels(self, mic_source: str = "ME", duration: int = 10):
         """Monitor audio levels in real-time without recording"""
         print(f"\n=== Testing Audio Levels for {mic_source} microphone ===")
+        
+        device_info = self.available_mics[mic_source]["device_info"]
+        if not device_info:
+            print(f"No {mic_source} device available for testing")
+            return
+        
+        print(f"Device: {format_device_info(device_info)}")
         print(f"Monitoring for {duration} seconds...")
         print(f"Silence threshold: {SILENCE_THRESHOLD}")
         print("Press Ctrl+C to stop early\n")
         
-        mic_index = self.available_mics[mic_source]["index"]
+        mic_index = device_info["index"]
+        # Use updated channel logic
+        if mic_source == "OTHERS":
+            channels = int(device_info["maxInputChannels"])
+        else:
+            channels = min(int(device_info["maxInputChannels"]), CHANNELS)
+        sample_rate = int(device_info["defaultSampleRate"])
         
         try:
             stream = self.audio.open(
                 format=FORMAT,
-                channels=CHANNELS,
-                rate=SAMPLE_RATE,
+                channels=channels,
+                rate=sample_rate,
                 input=True,
                 input_device_index=mic_index,
                 frames_per_buffer=CHUNK_SIZE
@@ -150,13 +212,25 @@ class AudioTester:
                                 save_file: bool, play_back: bool):
         """Worker thread for single recording capture"""
         mic = mic_data[source]
-        mic_index = mic["index"]
+        device_info = mic["device_info"]
+        
+        if not device_info:
+            print(f"No {source} device available for recording")
+            return
+        
+        mic_index = device_info["index"]
+        # Use updated channel logic
+        if source == "OTHERS":
+            channels = int(device_info["maxInputChannels"])
+        else:
+            channels = min(int(device_info["maxInputChannels"]), CHANNELS)
+        sample_rate = int(device_info["defaultSampleRate"])
         
         try:
             stream = self.audio.open(
                 format=FORMAT,
-                channels=CHANNELS,
-                rate=SAMPLE_RATE,
+                channels=channels,
+                rate=sample_rate,
                 input=True,
                 input_device_index=mic_index,
                 frames_per_buffer=CHUNK_SIZE
@@ -171,7 +245,7 @@ class AudioTester:
             # Record until silence
             frames = initial_chunks.copy()
             silence_counter = 0
-            frames_per_buffer = int(SAMPLE_RATE * SILENCE_DURATION / CHUNK_SIZE)
+            frames_per_buffer = int(sample_rate * SILENCE_DURATION / CHUNK_SIZE)
             recording_start = time.time()
             
             print("Recording... (speak now)")
@@ -202,14 +276,14 @@ class AudioTester:
             stream.close()
             
             if frames:
-                duration = len(frames) * CHUNK_SIZE / SAMPLE_RATE
+                duration = len(frames) * CHUNK_SIZE / sample_rate
                 print(f"Recorded {len(frames)} frames ({duration:.2f} seconds)")
                 
                 # Create AudioSegment
                 audio_segment = AudioSegment(
                     frames=frames,
-                    sample_rate=SAMPLE_RATE,
-                    channels=CHANNELS,
+                    sample_rate=sample_rate,
+                    channels=channels,
                     sample_width=self.audio.get_sample_size(FORMAT),
                     source=source
                 )
