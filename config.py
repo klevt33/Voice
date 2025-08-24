@@ -31,13 +31,11 @@ LANGUAGE = "en"        # Set to English only
 BEAM_SIZE = 5          # Beam size for faster-whisper
 
 # Chat configuration
-CHAT = "ChatGPT"    # Default chat to use: "Perplexity" or "ChatGPT"
+CHAT = "Perplexity"    # Default chat to use: "Perplexity" or "ChatGPT"
 DEBUGGER_ADDRESS = "localhost:9222"  # Debugging address for Chrome
 
-
-
 # Screenshot configuration
-ENABLE_SCREENSHOTS = True  # Toggle for screenshot functionality
+ENABLE_SCREENSHOTS = False  # Toggle for screenshot functionality
 # SCREENSHOT_FOLDER = r"C:\Users\klevt\OneDrive\Pictures\Screenshots"  # Screenshot folder path
 SCREENSHOT_FOLDER = r"C:\Users\kirill.levtov\OneDrive - Perficient, Inc\Pictures\Screenshots"  # Screenshot folder path
 
@@ -51,8 +49,8 @@ TOPIC_STORAGE_FOLDER = r"C:\Transcripts"  # Default storage path
 CHATS = {
     "Perplexity": {
         "url": "https://www.perplexity.ai/",
-        "prompt_init_file": "prompt_init.txt",
-        "prompt_msg_file": "prompt_msg.txt",
+        "prompt_init_file": r"prompts\prompt_init.txt",
+        "prompt_msg_file": r"prompts\prompt_msg.txt",
         "css_selector_input": "[id='ask-input']",
         "submit_button_selector": "button[aria-label='Submit']",
         "attach_files_button_selector": "button[aria-label='Attach files']",
@@ -63,8 +61,8 @@ CHATS = {
     },
     "ChatGPT": {
         "url": "https://chatgpt.com/",
-        "prompt_init_file": r"prompts\prompt_init_interview.txt", # Use a separate prompt for ChatGPT
-        "prompt_msg_file": r"prompts\prompt_msg_interview.txt",   # and a separate message prompt
+        "prompt_init_file": r"prompts\prompt_init.txt", # Use a separate prompt for ChatGPT
+        "prompt_msg_file": r"prompts\prompt_msg.txt",   # and a separate message prompt
         # Using ID is very reliable.
         "css_selector_input": "[id='prompt-textarea']", 
         # Using data-testid is very reliable for automation.

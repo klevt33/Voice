@@ -163,13 +163,13 @@ class AudioTester:
             )
             
             # Wait for sound
-            initial_data = _wait_for_sound(stream, source, self.run_threads)
-            if not initial_data:
+            initial_chunks = _wait_for_sound(stream, source, self.run_threads)
+            if not initial_chunks:
                 print("No sound detected or interrupted")
                 return
             
             # Record until silence
-            frames = [initial_data]
+            frames = initial_chunks.copy()
             silence_counter = 0
             frames_per_buffer = int(SAMPLE_RATE * SILENCE_DURATION / CHUNK_SIZE)
             recording_start = time.time()

@@ -4,7 +4,6 @@ import time
 import threading
 from enum import Enum
 from typing import Callable, Optional, Dict, Any
-from dataclasses import dataclass
 from datetime import datetime
 import pyaudio
 
@@ -17,15 +16,7 @@ class AudioConnectionState(Enum):
     RECONNECTING = "reconnecting"
     FAILED = "failed"
 
-@dataclass
-class AudioReconnectionAttempt:
-    """Tracks details of an audio reconnection attempt."""
-    attempt_number: int
-    timestamp: datetime
-    success: bool
-    source: str  # "ME" or "OTHERS"
-    error_message: Optional[str] = None
-    delay_used: float = 0.0
+
 
 class AudioMonitor:
     """
@@ -38,9 +29,6 @@ class AudioMonitor:
         self.ui_controller = ui_controller
         self.connection_state = AudioConnectionState.CONNECTED
         self.last_error: Optional[Exception] = None
-        self.reconnection_history = []
-        self.max_retries = 3
-        self.base_delay = 2.0  # Base delay in seconds
         self.is_reconnecting = False
         self._reconnection_lock = threading.Lock()
         
@@ -74,7 +62,8 @@ class AudioMonitor:
     
     def handle_audio_error(self, source: str, exception: Exception):
         """
-        Handles audio device errors by attempting reconnection.
+        Handles audio device errors by scheduling reconnection in a separate thread.
+        This avoids threading conflicts with the recording threads.
         
         Args:
             source: The audio source that failed ("ME" or "OTHERS")
@@ -88,8 +77,8 @@ class AudioMonitor:
         self.last_error = exception
         self._update_connection_state(AudioConnectionState.DISCONNECTED)
         
-        # Attempt reconnection for this specific source
-        self._attempt_audio_reconnection(source)
+        # Schedule reconnection in a separate thread to avoid conflicts with recording threads
+        self._schedule_automatic_reconnection(source)
     
     def _update_connection_state(self, new_state: AudioConnectionState):
         """Updates the connection state and logs the change."""
@@ -98,72 +87,48 @@ class AudioMonitor:
             self.connection_state = new_state
             logger.info(f"Audio connection state changed: {old_state.value} -> {new_state.value}")
     
-    def _attempt_audio_reconnection(self, source: str):
+    def _schedule_automatic_reconnection(self, source: str):
         """
-        Attempts to reconnect the audio device for a specific source.
-        For automatic error recovery, this now uses the combined reconnection approach.
+        Schedules automatic audio reconnection in a separate thread to avoid threading conflicts.
+        This works exactly like manual reconnection but is triggered automatically.
         
         Args:
-            source: The audio source to reconnect ("ME" or "OTHERS")
+            source: The audio source that failed ("ME" or "OTHERS")
         """
-        logger.info(f"Audio error detected on {source}, attempting full audio reconnection...")
-        # Use the combined reconnection approach for consistency
-        return self.reconnect_all_audio_sources()
-    
-    def _reconnect_audio_source_with_backoff(self, source: str) -> bool:
-        """
-        Implements exponential backoff reconnection strategy for audio.
-        
-        Args:
-            source: The audio source to reconnect
-            
-        Returns:
-            True if any reconnection attempt succeeded, False if all failed
-        """
-        for attempt_num in range(1, self.max_retries + 1):
-            logger.info(f"Audio reconnection attempt {attempt_num}/{self.max_retries} for {source}")
-            
-            attempt_start = datetime.now()
-            delay_used = 0.0
-            
+        def _automatic_reconnect():
             try:
-                # Calculate delay for this attempt (exponential backoff)
-                if attempt_num > 1:
-                    delay_used = self.base_delay * (2 ** (attempt_num - 2))
-                    logger.info(f"Waiting {delay_used:.1f} seconds before audio reconnection attempt {attempt_num}")
-                    time.sleep(delay_used)
+                logger.info(f"Automatic audio reconnection triggered by {source} error")
                 
-                # Attempt to reconnect the audio source
-                if self._perform_audio_reconnection(source):
-                    # Record successful attempt
-                    attempt = AudioReconnectionAttempt(
-                        attempt_number=attempt_num,
-                        timestamp=attempt_start,
-                        success=True,
-                        source=source,
-                        delay_used=delay_used
-                    )
-                    self.reconnection_history.append(attempt)
-                    
-                    logger.info(f"Audio reconnection successful for {source} on attempt {attempt_num}")
-                    return True
-                    
+                # Check if listening is currently active and turn it off if needed
+                was_listening = self.service_manager.state_manager.is_listening()
+                if was_listening:
+                    logger.info("Turning off listening mode for automatic audio reconnection")
+                    self.service_manager.state_manager.stop_listening()
+                    # Give threads a moment to stop listening
+                    time.sleep(0.5)
+                
+                # Update UI to show that we're reconnecting
+                self.ui_controller.update_browser_status("warning", "Status: Audio error detected, reconnecting...")
+                
+                # Attempt reconnection using the same method as manual reconnection
+                success = self.reconnect_all_audio_sources()
+                
+                if success and was_listening:
+                    # Restart listening if it was on before
+                    logger.info("Restarting listening mode after successful automatic audio reconnection")
+                    time.sleep(0.5)  # Give a moment for reconnection to settle
+                    self.service_manager.state_manager.start_listening()
+                
             except Exception as e:
-                logger.warning(f"Audio reconnection attempt {attempt_num} failed for {source}: {e}")
-                
-                # Record failed attempt
-                attempt = AudioReconnectionAttempt(
-                    attempt_number=attempt_num,
-                    timestamp=attempt_start,
-                    success=False,
-                    source=source,
-                    error_message=str(e),
-                    delay_used=delay_used
-                )
-                self.reconnection_history.append(attempt)
+                logger.error(f"Error during automatic audio reconnection: {e}")
+                self.ui_controller.update_browser_status("error", f"Status: Automatic audio reconnection failed - {str(e)}")
         
-        logger.error(f"All {self.max_retries} audio reconnection attempts failed for {source}.")
-        return False
+        # Run in a separate daemon thread to avoid blocking the recording thread
+        import threading
+        reconnect_thread = threading.Thread(target=_automatic_reconnect, daemon=True)
+        reconnect_thread.start()
+    
+
     
     def _refresh_microphone_list(self) -> bool:
         """
@@ -310,14 +275,7 @@ class AudioMonitor:
         """Returns the current audio connection state."""
         return self.connection_state
     
-    def get_reconnection_history(self) -> list:
-        """Returns the history of audio reconnection attempts."""
-        return self.reconnection_history.copy()
-    
-    def clear_reconnection_history(self):
-        """Clears the audio reconnection history."""
-        self.reconnection_history.clear()
-    
+
     def is_reconnection_in_progress(self) -> bool:
         """Returns True if an audio reconnection is currently in progress."""
         return self.is_reconnecting

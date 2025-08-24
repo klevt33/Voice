@@ -77,7 +77,7 @@ def process_recording(frames: List[bytes], source: str, audio: pyaudio.PyAudio,
     except Exception as e:
         logger.error(f"Error processing recording from {source}: {e}")
 
-def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio_monitor=None) -> Optional[bytes]:
+def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio_monitor=None) -> Optional[List[bytes]]:
     """
     Waits for a consistent sound to be detected on the stream.
 
@@ -88,22 +88,31 @@ def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio
         audio_monitor: Optional audio monitor for error handling.
 
     Returns:
-        The first chunk of audio data that triggered the sound detection,
+        A list of audio chunks that should be included at the start of recording,
         or None if the thread is signaled to stop.
     """
     logger.debug(f"Waiting for sound on {source} microphone...")
     sound_counter = 0
+    recent_chunks = []  # Rolling buffer to capture audio before detection
+    max_buffer_size = 3  # Keep last 3 chunks (~70ms of audio)
     
     while run_threads_ref["active"] and run_threads_ref.get("listening", True):
         try:
             data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
             level = get_audio_level(data)
             
+            # Maintain rolling buffer of recent chunks
+            recent_chunks.append(data)
+            if len(recent_chunks) > max_buffer_size:
+                recent_chunks.pop(0)
+            
             if level > SILENCE_THRESHOLD:
                 sound_counter += 1
                 if sound_counter >= 2:  # Require at least 2 consecutive sound frames
                     logger.info(f"Sound detected on {source} microphone. Recording started.")
-                    return data
+                    # Return all chunks that should be included in the recording
+                    # This includes the buffer chunks plus the current triggering chunk
+                    return recent_chunks.copy()
             else:
                 sound_counter = 0  # Reset counter if we detect silence
         except Exception as e:
@@ -215,8 +224,8 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
             
             # 1. Wait for sound to begin
             try:
-                initial_data = _wait_for_sound(stream, source, run_threads_ref, audio_monitor)
-                if not initial_data:
+                initial_chunks = _wait_for_sound(stream, source, run_threads_ref, audio_monitor)
+                if not initial_chunks:
                     continue # Loop will terminate if run_threads_ref['active'] is False
             except Exception as e:
                 logger.error(f"Error waiting for sound on {source}: {e}")
@@ -228,7 +237,7 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 continue
 
             mic["recording"] = True
-            mic["frames"] = [initial_data]
+            mic["frames"] = initial_chunks.copy()  # Start with all the initial chunks
             recording_start_time = time.time()  # Track recording start time
             max_duration_reached = False
             
