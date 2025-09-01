@@ -14,6 +14,7 @@ from TopicsUI import UIController, Topic
 from managers import StateManager, ServiceManager
 from topic_router import TopicRouter
 from browser import SUBMISSION_SUCCESS, SUBMISSION_FAILED_INPUT_UNAVAILABLE, SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED, SUBMISSION_NO_CONTENT
+from exception_notifier import exception_notifier
 
 def setup_log_rotation(log_file_path: str = "transcription.log"):
     """
@@ -70,8 +71,11 @@ class AudioToChat:
         # Core components
         self.state_manager = StateManager()
         self.ui_controller = UIController(self.root, self)
-        self.service_manager = ServiceManager(self.state_manager, self.ui_controller)
+        self.service_manager = ServiceManager(self.state_manager, self.ui_controller, exception_notifier)
         self.topic_router = TopicRouter(self.state_manager, self.service_manager, self.ui_controller)
+        
+        # Initialize exception notifier with UI callback
+        exception_notifier.set_ui_update_callback(self._thread_safe_status_update)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing_ui_initiated)
         signal.signal(signal.SIGINT, self.handle_exit_signal)
@@ -254,6 +258,19 @@ class AudioToChat:
                 self.ui_controller.update_browser_status("error", "Status: Failed to send topics to AI.")
         
         self.root.after(0, _update_task)
+
+    def _thread_safe_status_update(self, status_key: str, message: str):
+        """Thread-safe wrapper for UI status updates from exception notifier."""
+        if not self.root or not self.root.winfo_exists():
+            return
+        
+        def _update_status():
+            try:
+                self.ui_controller.update_browser_status(status_key, message)
+            except Exception as e:
+                logger.error(f"Error updating status from exception notifier: {e}")
+        
+        self.root.after(0, _update_status)
 
 def main():
     app = AudioToChat()

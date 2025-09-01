@@ -24,9 +24,10 @@ class AudioMonitor:
     Handles audio device disconnection and reconnection.
     """
     
-    def __init__(self, service_manager, ui_controller):
+    def __init__(self, service_manager, ui_controller, exception_notifier=None):
         self.service_manager = service_manager
         self.ui_controller = ui_controller
+        self.exception_notifier = exception_notifier
         self.connection_state = AudioConnectionState.CONNECTED
         self.last_error: Optional[Exception] = None
         self.is_reconnecting = False
@@ -76,6 +77,11 @@ class AudioMonitor:
         logger.warning(f"Audio device error detected on {source}: {exception}")
         self.last_error = exception
         self._update_connection_state(AudioConnectionState.DISCONNECTED)
+        
+        # Notify about audio device error
+        if self.exception_notifier:
+            self.exception_notifier.notify_exception("audio_device", exception, "warning", 
+                                                   f"Audio Device Error - {source}")
         
         # Schedule reconnection in a separate thread to avoid conflicts with recording threads
         self._schedule_automatic_reconnection(source)
@@ -281,6 +287,11 @@ class AudioMonitor:
             if success:
                 logger.info("Audio reconnection successful for both sources!")
                 self._update_connection_state(AudioConnectionState.CONNECTED)
+                
+                # Clear audio-related exception statuses on successful reconnection
+                if self.exception_notifier:
+                    self.exception_notifier.clear_exception_status("audio_device")
+                    self.exception_notifier.clear_exception_status("audio_recording")
                 
                 # Get device names for consolidated success message
                 try:

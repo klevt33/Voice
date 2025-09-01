@@ -49,7 +49,7 @@ def get_audio_level(data: bytes) -> float:
     return np.mean(np.abs(data_np))
 
 def process_recording(frames: List[bytes], source: str, audio: pyaudio.PyAudio, 
-                     audio_queue: queue.Queue, device_info: Dict[str, Any] = None) -> None:
+                     audio_queue: queue.Queue, device_info: Dict[str, Any] = None, exception_notifier=None) -> None:
     """Process the recorded frames and add to in-memory queue"""
     if not frames:
         logger.warning(f"No frames to process for {source}")
@@ -88,6 +88,10 @@ def process_recording(frames: List[bytes], source: str, audio: pyaudio.PyAudio,
         # Add to queue for processing
         audio_queue.put(audio_segment)
         logger.info(f"Audio segment from {source} queued for transcription")
+        
+        # Clear audio recording exceptions on successful recording processing
+        if exception_notifier:
+            exception_notifier.clear_exception_status("audio_recording")
     except Exception as e:
         logger.error(f"Error processing recording from {source}: {e}")
 
@@ -108,7 +112,7 @@ def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio
     logger.debug(f"Waiting for sound on {source} microphone...")
     sound_counter = 0
     recent_chunks = []  # Rolling buffer to capture audio before detection
-    max_buffer_size = 3  # Keep last 3 chunks (~70ms of audio)
+    max_buffer_size = 10  # Keep last 10 chunks (~230ms of audio)
     
     while run_threads_ref["active"] and run_threads_ref.get("listening", True):
         try:
@@ -132,6 +136,12 @@ def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio
         except Exception as e:
             if run_threads_ref["active"]:
                 logger.error(f"Error reading from {source} stream while waiting for sound: {e}")
+                
+                # Notify about audio recording error
+                if exception_notifier:
+                    exception_notifier.notify_exception("audio_recording", e, "warning", 
+                                                      f"Audio Recording Error - {source}")
+                
                 if audio_monitor:
                     audio_monitor.handle_audio_error(source, e)
                 time.sleep(1)
@@ -139,7 +149,7 @@ def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio
 
 def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]], 
                     audio_queue: queue.Queue, service_manager, 
-                    run_threads_ref: Dict[str, bool], audio_monitor=None) -> None:
+                    run_threads_ref: Dict[str, bool], audio_monitor=None, exception_notifier=None) -> None:
     """
     Generic thread for handling audio recording from a specific microphone.
     It waits for sound, records until silence, and then queues the audio for processing.
@@ -316,6 +326,12 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 except Exception as e:
                     if run_threads_ref["active"]:
                         logger.error(f"Error during {source} recording: {e}")
+                        
+                        # Notify about audio recording error
+                        if exception_notifier:
+                            exception_notifier.notify_exception("audio_recording", e, "warning", 
+                                                              f"Audio Recording Error - {source}")
+                        
                         if audio_monitor:
                             audio_monitor.handle_audio_error(source, e)
                         # Stop current recording and force stream recreation
@@ -332,7 +348,7 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 current_audio = get_current_audio()
                 if current_audio:
                     device_info = mic.get("device_info")
-                    process_recording(mic["frames"], source, current_audio, audio_queue, device_info)
+                    process_recording(mic["frames"], source, current_audio, audio_queue, device_info, exception_notifier)
                 mic["frames"] = []
             
             # 4. If max duration was reached, check if sound continues for new fragment
@@ -377,6 +393,12 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                             except Exception as e:
                                 if run_threads_ref["active"]:
                                     logger.error(f"Error during {source} recording continuation: {e}")
+                                    
+                                    # Notify about audio recording error
+                                    if exception_notifier:
+                                        exception_notifier.notify_exception("audio_recording", e, "warning", 
+                                                                          f"Audio Recording Error - {source}")
+                                    
                                     if audio_monitor:
                                         audio_monitor.handle_audio_error(source, e)
                                     # Stop current recording and force stream recreation
@@ -389,11 +411,17 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                             current_audio = get_current_audio()
                             if current_audio:
                                 device_info = mic.get("device_info")
-                                process_recording(mic["frames"], source, current_audio, audio_queue, device_info)
+                                process_recording(mic["frames"], source, current_audio, audio_queue, device_info, exception_notifier)
                             mic["frames"] = []
                 except Exception as e:
                     if run_threads_ref["active"]:
                         logger.error(f"Error checking for sound continuation on {source}: {e}")
+                        
+                        # Notify about audio recording error
+                        if exception_notifier:
+                            exception_notifier.notify_exception("audio_recording", e, "warning", 
+                                                              f"Audio Recording Error - {source}")
+                        
                         if audio_monitor:
                             audio_monitor.handle_audio_error(source, e)
                         # Force stream recreation on next iteration

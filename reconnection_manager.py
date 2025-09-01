@@ -46,7 +46,7 @@ class ReconnectionManager:
                 self.browser_manager.connection_monitor.set_connection_state(ConnectionState.RECONNECTING)
             
             # Update UI to show reconnecting status
-            self.ui_callback("reconnecting", [])
+            self.ui_callback("reconnecting", None)
             
             # Attempt reconnection with backoff
             success = self.reconnect_with_backoff()
@@ -62,7 +62,7 @@ class ReconnectionManager:
                 # Only show "reconnected" status if browser is on correct page
                 # If not on correct page, the warning status from navigate_to_initial_page should remain
                 if hasattr(self.browser_manager, 'on_correct_page') and self.browser_manager.on_correct_page:
-                    self.ui_callback("reconnected", [])
+                    self.ui_callback("reconnected", None)
                     logger.info("Reconnection completed - browser is on correct page.")
                 else:
                     logger.info("Reconnection completed - browser not on correct page.")
@@ -76,7 +76,7 @@ class ReconnectionManager:
                     self.browser_manager.connection_monitor.set_connection_state(ConnectionState.FAILED)
                 
                 # Update UI to show connection failure
-                self.ui_callback("connection_failed", [])
+                self.ui_callback("connection_failed", None)
                 
                 return False
                 

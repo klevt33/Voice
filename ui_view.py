@@ -148,7 +148,11 @@ class UIView(ttk.Frame):
             "info": ("blue", "Info"),
             "success": ("green", "Success"),
             "warning": ("#FF8C00", "Warning"), 
-            "error": ("red", "Error")
+            "error": ("red", "Error"),
+            # Exception notification status types
+            "cuda_error": ("red", "CUDA Error - Transcription unavailable"),
+            "audio_error": ("#FF8C00", "Audio Error - Device issue detected"),
+            "transcription_error": ("red", "Transcription Error - Processing failed")
         }
         self.browser_status_indicator_label = ttk.Label(parent, text="●", font=("TkDefaultFont", 12, "bold"))
         self.browser_status_indicator_label.pack(side=tk.LEFT, padx=(5, 2))

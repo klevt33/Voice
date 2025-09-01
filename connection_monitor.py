@@ -125,7 +125,7 @@ class ConnectionMonitor:
             self._update_connection_state(ConnectionState.DISCONNECTED)
             
             # Update UI to show connection lost status
-            self.ui_callback("connection_lost", [])
+            self.ui_callback("connection_lost", None)
             
             # Trigger automatic reconnection if reconnection manager is available
             if self.reconnection_manager:

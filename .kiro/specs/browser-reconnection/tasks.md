@@ -66,7 +66,10 @@
   - Update health test to not treat wrong page as connection failure (consistent with startup flow)
   - _Requirements: 1.1, 2.4, 2.5_
 
-- [-] 9. Write unit tests for connection monitoring components
+- [x] 9. Write unit tests for connection monitoring components
+
+
+
 
   - Create tests for ConnectionMonitor error classification logic
 

@@ -36,7 +36,8 @@ def get_whisper_model(model_name: str, device: str, compute_type: str) -> Whispe
 
 def transcription_thread(audio_queue: queue.Queue,
                          transcribed_topics_queue: queue.Queue,
-                         run_threads_ref: Dict[str, bool]) -> None:
+                         run_threads_ref: Dict[str, bool],
+                         exception_notifier=None) -> None:
     """
     Thread that processes audio segments, converts speech to text,
     and puts the resulting Topic object into a queue.
@@ -63,6 +64,12 @@ def transcription_thread(audio_queue: queue.Queue,
     except Exception as e:
         logger.error(f"Error initializing faster_whisper: {e}")
         logger.error(f"Detailed error: {str(e)}")
+        
+        # Notify about initialization error
+        if exception_notifier:
+            exception_notifier.notify_exception("transcription", e, "error", 
+                                              "Transcription initialization failed")
+        
         run_threads_ref["active"] = False
         return
     
@@ -130,6 +137,10 @@ def transcription_thread(audio_queue: queue.Queue,
                             topic = Topic(text=cleaned_text, timestamp=datetime.now(), source=audio_segment.source)
                             transcribed_topics_queue.put(topic)
                             logger.info(f"TRANSCRIBED (Queued): [{topic.source}] {cleaned_text[:50]}...")
+                            
+                            # Clear any active transcription exceptions on successful transcription
+                            if exception_notifier:
+                                exception_notifier.clear_exception_status("transcription")
 
                 audio_queue.task_done()
                 processing_time = time.time() - start_time
@@ -138,6 +149,25 @@ def transcription_thread(audio_queue: queue.Queue,
                     
             except Exception as e:
                 logger.error(f"Error transcribing {source_prefix} audio: {e}")
+                
+                # Detect and notify about CUDA/GPU errors
+                if exception_notifier:
+                    error_str = str(e).lower()
+                    if any(keyword in error_str for keyword in ["cuda", "gpu", "device"]):
+                        if "out of memory" in error_str:
+                            exception_notifier.notify_exception("transcription", e, "error", 
+                                                              "CUDA Error - GPU out of memory")
+                        elif "driver" in error_str:
+                            exception_notifier.notify_exception("transcription", e, "error", 
+                                                              "CUDA Error - GPU driver issue")
+                        else:
+                            exception_notifier.notify_exception("transcription", e, "error", 
+                                                              "CUDA Error - Transcription unavailable")
+                    else:
+                        # Non-CUDA transcription error
+                        exception_notifier.notify_exception("transcription", e, "error", 
+                                                          "Transcription Error - Processing failed")
+                
                 # Put it back in the queue to try again later
                 audio_queue.put(audio_segment)
                 stats["errors"] += 1
@@ -145,6 +175,12 @@ def transcription_thread(audio_queue: queue.Queue,
                 
         except Exception as e:
             logger.error(f"Error in transcription thread: {e}")
+            
+            # Notify about general transcription thread errors
+            if exception_notifier:
+                exception_notifier.notify_exception("transcription", e, "error", 
+                                                  "Transcription thread error")
+            
             stats["errors"] += 1
             time.sleep(1)
             

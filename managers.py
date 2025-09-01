@@ -48,9 +48,10 @@ class ServiceManager:
     """
     Manages the lifecycle of external services like audio and browser automation.
     """
-    def __init__(self, state_manager: StateManager, ui_controller):
+    def __init__(self, state_manager: StateManager, ui_controller, exception_notifier=None):
         self.state_manager = state_manager
         self.ui_controller = ui_controller
+        self.exception_notifier = exception_notifier
         self.audio: Optional[pyaudio.PyAudio] = None
         self.browser_manager: Optional[BrowserManager] = None
         self.audio_monitor: Optional[AudioMonitor] = None
@@ -64,7 +65,7 @@ class ServiceManager:
         try:
             self.audio = pyaudio.PyAudio()
             # Initialize audio monitor
-            self.audio_monitor = AudioMonitor(self, self.ui_controller)
+            self.audio_monitor = AudioMonitor(self, self.ui_controller, self.exception_notifier)
             
             # Detect and validate default audio devices
             from audio_device_utils import get_default_microphone_info, get_default_speakers_loopback_info, validate_device_info, format_device_info
@@ -163,7 +164,7 @@ class ServiceManager:
             thread = threading.Thread(
                 name=f"Recorder{source}",
                 target=recording_thread, 
-                args=(source, self.mic_data, audio_queue, self, self.state_manager.run_threads_ref, self.audio_monitor)
+                args=(source, self.mic_data, audio_queue, self, self.state_manager.run_threads_ref, self.audio_monitor, self.exception_notifier)
             )
             thread.daemon = True
             self.threads.append(thread)
@@ -171,7 +172,7 @@ class ServiceManager:
         transcriber = threading.Thread(
             name="Transcriber",
             target=transcription_thread, 
-            args=(audio_queue, transcribed_topics_queue, self.state_manager.run_threads_ref)
+            args=(audio_queue, transcribed_topics_queue, self.state_manager.run_threads_ref, self.exception_notifier)
         )
         transcriber.daemon = True
         self.threads.append(transcriber)

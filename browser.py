@@ -50,8 +50,10 @@ class BrowserManager:
             self.chat_page = ChatPage(self.driver, self.chat_config)
             
             # Initialize connection monitor and reconnection manager
-            self.reconnection_manager = ReconnectionManager(self, self.ui_update_callback)
-            self.connection_monitor = ConnectionMonitor(self, self.ui_update_callback, self.reconnection_manager)
+            # Use status_callback for browser connection status updates, not ui_update_callback (which is for topic submissions)
+            connection_status_callback = self.status_callback if self.status_callback else self.ui_update_callback
+            self.reconnection_manager = ReconnectionManager(self, connection_status_callback)
+            self.connection_monitor = ConnectionMonitor(self, connection_status_callback, self.reconnection_manager)
             
             logger.info(f"Successfully connected to Chrome (session: {self.driver.session_id})")
             return True
@@ -257,12 +259,30 @@ class BrowserManager:
                 if self.connection_monitor and self.connection_monitor.get_connection_state() == ConnectionState.CONNECTED:
                     try:
                         if not self.test_connection_health():
-                            logger.warning("Connection health check failed, but proceeding with operation.")
+                            logger.warning("Connection health check failed - skipping batch to allow reconnection.")
+                            for _ in all_items_in_batch: self.browser_queue.task_done()
+                            continue
                     except Exception as e:
-                        logger.warning(f"Connection health check error: {e}")
+                        if self.connection_monitor and self.connection_monitor.is_connection_error(e):
+                            logger.warning(f"Connection health check detected connection error: {e}")
+                            # Connection error will be handled by connection monitor, skip this batch
+                            for _ in all_items_in_batch: self.browser_queue.task_done()
+                            continue
+                        else:
+                            logger.warning(f"Connection health check error (non-connection): {e}")
 
                 # 1. Focus the browser window to ensure it's active.
-                self.focus_browser_window()
+                try:
+                    self.focus_browser_window()
+                except Exception as e:
+                    if self.connection_monitor and self.connection_monitor.is_connection_error(e):
+                        logger.error(f"Connection error during focus browser window: {e}")
+                        # Connection error will be handled by connection monitor, skip this batch
+                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        continue
+                    else:
+                        # Non-connection error, log but continue
+                        logger.warning(f"Non-connection error during focus browser window: {e}")
                 
                 # 2. Prime the input field to enable the submit button
                 logger.info("Work detected. Priming input field with 'Waiting...' ")
@@ -270,15 +290,26 @@ class BrowserManager:
                 def _prime_operation():
                     return self.chat_page.prime_input()
                 
-                if self.connection_monitor:
-                    prime_success = self.connection_monitor.execute_with_monitoring(_prime_operation)
-                else:
-                    prime_success = self.chat_page.prime_input()
-                    
-                if not prime_success:
-                    logger.error("Could not prime input field. Skipping batch.")
-                    self.browser_queue.task_done()
-                    continue
+                try:
+                    if self.connection_monitor:
+                        prime_success = self.connection_monitor.execute_with_monitoring(_prime_operation)
+                    else:
+                        prime_success = self.chat_page.prime_input()
+                        
+                    if not prime_success:
+                        logger.error("Could not prime input field. Skipping batch.")
+                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        continue
+                except Exception as e:
+                    if self.connection_monitor and self.connection_monitor.is_connection_error(e):
+                        logger.error(f"Connection error during prime input: {e}")
+                        # Connection error will be handled by connection monitor, skip this batch
+                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        continue
+                    else:
+                        logger.error(f"Non-connection error during prime input: {e}")
+                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        continue
 
                 # 3. Wait for the site to be ready for submission
                 logger.info("Input primed. Waiting for submit button to become active...")
@@ -298,14 +329,24 @@ class BrowserManager:
                             is_ready = True
                             break
                     except Exception as e:
-                        # Connection error during ready check - will be handled by connection monitor
-                        logger.warning(f"Connection error during ready check: {e}")
-                        break
+                        if self.connection_monitor and self.connection_monitor.is_connection_error(e):
+                            logger.warning(f"Connection error during ready check: {e}")
+                            # Connection error will be handled by connection monitor, skip this batch
+                            for _ in all_items_in_batch: self.browser_queue.task_done()
+                            # Use a flag to indicate we should skip the rest of the processing
+                            is_ready = None  # Use None to indicate connection error vs timeout
+                            break
+                        else:
+                            logger.warning(f"Non-connection error during ready check: {e}")
+                            break
                         
                     if not self.run_threads_ref["active"]: return
                     time.sleep(0.2) # Small delay to prevent busy-waiting
 
-                if not is_ready:
+                if is_ready is None:
+                    # Connection error occurred during ready check, already handled
+                    continue
+                elif not is_ready:
                     logger.error("Timed out waiting for submit button. Aborting batch.")
                     self.ui_update_callback(SUBMISSION_FAILED_INPUT_UNAVAILABLE, [])
                     for _ in all_items_in_batch: self.browser_queue.task_done()
@@ -354,9 +395,13 @@ class BrowserManager:
                         else:
                             self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
                     except Exception as e:
-                        logger.error(f"Message submission failed due to connection error: {e}")
-                        # Don't clear topics on connection error - they'll be preserved for retry
-                        self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
+                        if self.connection_monitor and self.connection_monitor.is_connection_error(e):
+                            logger.error(f"Message submission failed due to connection error: {e}")
+                            # Connection error will be handled by connection monitor
+                            # Don't call ui_update_callback here as the connection monitor will handle status updates
+                        else:
+                            logger.error(f"Message submission failed due to non-connection error: {e}")
+                            self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
                 else:
                     self.ui_update_callback(SUBMISSION_NO_CONTENT, combined_topic_objects)
 
