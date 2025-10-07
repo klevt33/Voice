@@ -8,10 +8,19 @@
 # Pinned by torch==2.5.1+cu121. This is a critical dependency for PyTorch.
 sympy==1.13.1
 
+# Core transcription dependencies
 faster-whisper
 ctranslate2
+
+# API transcription integration
+groq
+
+# Audio processing
 pyaudio
 pyaudiowpatch
+numpy
+
+# Browser automation and UI
 selenium
 pyperclip
 PyGetWindow
