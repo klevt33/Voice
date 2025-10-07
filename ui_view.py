@@ -19,6 +19,8 @@ class UIView(ttk.Frame):
         
         # Initialize keep prefix preference (default: False)
         self.keep_prefix_var = tk.BooleanVar(value=False)
+        
+        # Transcription method checkbox will be created in _create_transcription_method_toggle_title_level
 
         self.create_widgets()
 
@@ -50,6 +52,9 @@ class UIView(ttk.Frame):
 
         # --- List Frame Widgets ---
         self._create_list_frame_widgets(self.list_frame)
+        
+        # --- Transcription Method Toggle (positioned at title level) ---
+        self._create_transcription_method_toggle_title_level()
 
         # --- Full Text Widget ---
         self.full_text = scrolledtext.ScrolledText(self.text_frame, wrap=tk.WORD, height=3, state="disabled")
@@ -135,6 +140,67 @@ class UIView(ttk.Frame):
         self.listen_var.trace_add("write", self.controller.toggle_listening)
         self.create_toggle_switch(parent, "Listen", self.listen_var).pack(side=tk.LEFT, padx=5)
 
+    def _create_transcription_method_toggle_title_level(self):
+        """Create transcription method toggle positioned at the title level of the topics frame"""
+        self.transcription_method_var = tk.BooleanVar(value=False)
+        
+        # Create checkbox for API transcription
+        self.transcription_method_checkbox = ttk.Checkbutton(
+            self.list_frame,
+            text="Use API",
+            variable=self.transcription_method_var,
+            command=self.controller.on_transcription_method_change
+        )
+        
+        # Position it in the top-right corner of the Topics frame border
+        # Similar to Show Context but with different offset to avoid overlap
+        self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
+        
+        # Initially hidden - will be shown/configured by controller based on availability
+        self.transcription_method_checkbox.place_forget()
+
+    def update_transcription_method_control(self, gpu_available: bool, api_available: bool, current_method: str = None):
+        """
+        Update transcription method control based on availability
+        
+        Args:
+            gpu_available: Whether GPU transcription is available
+            api_available: Whether API transcription is available  
+            current_method: Current transcription method name
+        """
+        if not gpu_available and not api_available:
+            # No transcription methods available - hide control
+            self.transcription_method_checkbox.place_forget()
+            return
+        
+        if not gpu_available and api_available:
+            # Only API available - show disabled checkbox (checked)
+            self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
+            self.transcription_method_var.set(True)
+            self.transcription_method_checkbox.config(state="disabled", text="API Only")
+            return
+        
+        if gpu_available and not api_available:
+            # Only GPU available - show disabled checkbox (unchecked)  
+            self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
+            self.transcription_method_var.set(False)
+            self.transcription_method_checkbox.config(state="disabled", text="Local Only")
+            return
+        
+        if gpu_available and api_available:
+            # Both available - show enabled checkbox
+            self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
+            self.transcription_method_checkbox.config(state="normal", text="Use API")
+            
+            # Set checkbox based on current method
+            if current_method:
+                is_api = "api" in current_method.lower() or "groq" in current_method.lower()
+                self.transcription_method_var.set(is_api)
+
+    def get_transcription_method_preference(self) -> bool:
+        """Get transcription method preference (False=Local, True=API)"""
+        return self.transcription_method_var.get()
+
     def _create_status_bar(self, parent):
         self.status_colors = {
             "default": ("gray", "Status: Initializing..."),
@@ -152,7 +218,16 @@ class UIView(ttk.Frame):
             # Exception notification status types
             "cuda_error": ("red", "CUDA Error - Transcription unavailable"),
             "audio_error": ("#FF8C00", "Audio Error - Device issue detected"),
-            "transcription_error": ("red", "Transcription Error - Processing failed")
+            "transcription_error": ("red", "Transcription Error - Processing failed"),
+            # Transcription method status types
+            "transcription_local_gpu": ("green", "Transcription: Local GPU"),
+            "transcription_local_cpu": ("blue", "Transcription: Local CPU"),
+            "transcription_api": ("purple", "Transcription: Groq API"),
+            "transcription_fallback": ("#FF8C00", "Transcription: Fallback Active"),
+            "transcription_switching": ("blue", "Switching transcription method..."),
+            "transcription_method_error": ("red", "Transcription method error"),
+            "api_rate_limit": ("#FF8C00", "API Rate Limited - Using fallback"),
+            "api_auth_error": ("red", "API Authentication Error")
         }
         self.browser_status_indicator_label = ttk.Label(parent, text="●", font=("TkDefaultFont", 12, "bold"))
         self.browser_status_indicator_label.pack(side=tk.LEFT, padx=(5, 2))
@@ -230,3 +305,42 @@ class UIView(ttk.Frame):
         message_to_display = custom_message if custom_message is not None else default_message
         self.browser_status_indicator_label.config(foreground=color)
         self.status_message_label.config(text=message_to_display, foreground=color)
+    
+    def update_transcription_status(self, method_name: str, is_fallback: bool = False, custom_message: str = None):
+        """
+        Update status bar to show current transcription method
+        
+        Args:
+            method_name: Name of the transcription method
+            is_fallback: Whether fallback is currently active
+            custom_message: Custom status message
+        """
+        if custom_message:
+            self.update_browser_status("info", custom_message)
+            return
+        
+        if is_fallback:
+            self.update_browser_status("transcription_fallback", f"Transcription: {method_name} (Fallback)")
+            return
+        
+        # Determine status key based on method name
+        method_lower = method_name.lower()
+        if "cuda" in method_lower or ("gpu" in method_lower and "cuda" in method_lower):
+            status_key = "transcription_local_gpu"
+        elif "cpu" in method_lower or ("local" in method_lower and "cpu" in method_lower):
+            status_key = "transcription_local_cpu"
+        elif "api" in method_lower or "groq" in method_lower:
+            status_key = "transcription_api"
+        else:
+            status_key = "info"
+        
+        self.update_browser_status(status_key, f"Transcription: {method_name}")
+    
+    def show_transcription_error(self, error_type: str, error_message: str):
+        """Show transcription-related error in status bar"""
+        if "authentication" in error_type.lower() or "api key" in error_type.lower():
+            self.update_browser_status("api_auth_error", error_message)
+        elif "rate limit" in error_type.lower():
+            self.update_browser_status("api_rate_limit", error_message)
+        else:
+            self.update_browser_status("transcription_method_error", error_message)

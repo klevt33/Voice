@@ -30,6 +30,19 @@ COMPUTE_TYPE = "float16"  # Compute type (float16, int8)
 LANGUAGE = "en"        # Set to English only
 BEAM_SIZE = 5          # Beam size for faster-whisper
 
+# API Transcription Configuration
+GROQ_API_KEY_ENV_VAR = "GROQ_API_KEY"  # Environment variable name for Groq API key
+GROQ_MODEL = "whisper-large-v3"        # Groq Whisper model to use
+API_REQUEST_TIMEOUT = 30.0             # Timeout for API requests in seconds
+API_RETRY_COUNT = 3                    # Number of retry attempts for failed API requests
+API_RETRY_BACKOFF = 2.0               # Exponential backoff multiplier for retries
+
+# Transcription Method Configuration
+DEFAULT_TRANSCRIPTION_METHOD = "auto"  # "local", "api", "auto" (auto = prefer local GPU if available)
+ENABLE_FALLBACK = True                 # Enable automatic fallback between transcription methods
+FALLBACK_RETRY_LIMIT = 3              # Maximum number of fallback attempts before giving up
+FALLBACK_COOLDOWN_PERIOD = 60.0       # Cooldown period in seconds before retrying failed method
+
 # Chat configuration
 CHAT = "Perplexity"    # Default chat to use: "Perplexity" or "ChatGPT"
 DEBUGGER_ADDRESS = "localhost:9222"  # Debugging address for Chrome
@@ -81,3 +94,56 @@ CHATS = {
 for path in DLL_PATHS:
     if os.path.exists(path):
         os.add_dll_directory(path)
+
+# Configuration validation functions
+def get_groq_api_key():
+    """Get Groq API key from environment variable"""
+    return os.getenv(GROQ_API_KEY_ENV_VAR)
+
+def is_groq_api_available():
+    """Check if Groq API is available (has valid API key)"""
+    api_key = get_groq_api_key()
+    return api_key is not None and len(api_key.strip()) > 0
+
+def validate_transcription_config():
+    """Validate transcription configuration and return validation results"""
+    validation_results = {
+        "groq_api_available": is_groq_api_available(),
+        "groq_api_key_configured": get_groq_api_key() is not None,
+        "config_valid": True,
+        "warnings": [],
+        "errors": []
+    }
+    
+    # Check API configuration
+    if not validation_results["groq_api_key_configured"]:
+        validation_results["warnings"].append(
+            f"Groq API key not found in environment variable '{GROQ_API_KEY_ENV_VAR}'. API transcription will be unavailable."
+        )
+    
+    # Validate timeout values
+    if API_REQUEST_TIMEOUT <= 0:
+        validation_results["errors"].append("API_REQUEST_TIMEOUT must be greater than 0")
+        validation_results["config_valid"] = False
+    
+    if API_RETRY_COUNT < 0:
+        validation_results["errors"].append("API_RETRY_COUNT must be 0 or greater")
+        validation_results["config_valid"] = False
+    
+    if FALLBACK_RETRY_LIMIT < 0:
+        validation_results["errors"].append("FALLBACK_RETRY_LIMIT must be 0 or greater")
+        validation_results["config_valid"] = False
+    
+    if FALLBACK_COOLDOWN_PERIOD < 0:
+        validation_results["errors"].append("FALLBACK_COOLDOWN_PERIOD must be 0 or greater")
+        validation_results["config_valid"] = False
+    
+    # Validate transcription method
+    valid_methods = ["local", "api", "auto"]
+    if DEFAULT_TRANSCRIPTION_METHOD not in valid_methods:
+        validation_results["errors"].append(
+            f"DEFAULT_TRANSCRIPTION_METHOD must be one of {valid_methods}, got '{DEFAULT_TRANSCRIPTION_METHOD}'"
+        )
+        validation_results["config_valid"] = False
+    
+    return validation_results

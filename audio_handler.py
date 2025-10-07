@@ -42,6 +42,81 @@ class AudioSegment:
             logger.error(f"Error creating WAV data: {e}")
             # Return empty bytes if there's an error
             return b''
+    
+    def get_api_compatible_wav_bytes(self) -> bytes:
+        """
+        Get WAV bytes optimized for API transmission
+        Ensures format compatibility with API requirements
+        """
+        wav_buffer = io.BytesIO()
+        try:
+            with wave.open(wav_buffer, 'wb') as wf:
+                # Ensure standard format for API compatibility
+                # Most APIs prefer 16-bit PCM, mono or stereo
+                wf.setnchannels(min(self.channels, 2))  # Limit to stereo max
+                wf.setsampwidth(self.sample_width)
+                wf.setframerate(self.sample_rate)
+                wf.writeframes(b''.join(self.frames))
+            wav_buffer.seek(0)
+            return wav_buffer.read()
+        except Exception as e:
+            logger.error(f"Error creating API-compatible WAV data: {e}")
+            return b''
+    
+    def get_size_mb(self) -> float:
+        """Get audio size in MB for API limit checking"""
+        try:
+            wav_bytes = self.get_wav_bytes()
+            return len(wav_bytes) / (1024 * 1024)
+        except Exception as e:
+            logger.error(f"Error calculating audio size: {e}")
+            return 0.0
+    
+    def get_duration_seconds(self) -> float:
+        """Get audio duration in seconds"""
+        try:
+            total_frames = len(self.frames)
+            samples_per_frame = CHUNK_SIZE // self.sample_width
+            total_samples = total_frames * samples_per_frame
+            return total_samples / self.sample_rate
+        except Exception as e:
+            logger.error(f"Error calculating audio duration: {e}")
+            return 0.0
+    
+    def is_valid_for_api(self, max_size_mb: float = 25.0) -> tuple[bool, str]:
+        """
+        Check if audio segment is valid for API submission
+        
+        Args:
+            max_size_mb: Maximum allowed size in MB
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        try:
+            # Check if we have frames
+            if not self.frames:
+                return False, "No audio data available"
+            
+            # Check size
+            size_mb = self.get_size_mb()
+            if size_mb > max_size_mb:
+                return False, f"Audio too large: {size_mb:.1f}MB (limit: {max_size_mb}MB)"
+            
+            # Check duration (minimum duration check)
+            duration = self.get_duration_seconds()
+            if duration < 0.1:  # Less than 100ms
+                return False, f"Audio too short: {duration:.2f}s"
+            
+            # Check if WAV conversion works
+            wav_bytes = self.get_api_compatible_wav_bytes()
+            if not wav_bytes:
+                return False, "Failed to convert audio to WAV format"
+            
+            return True, ""
+            
+        except Exception as e:
+            return False, f"Validation error: {e}"
 
 def get_audio_level(data: bytes) -> float:
     """Calculate the audio level using absolute values"""

@@ -18,3 +18,4 @@ faster_whisper_models/
 
 # Gemini CLI memory file
 GEMINI.md
+test_groq_whisper.py

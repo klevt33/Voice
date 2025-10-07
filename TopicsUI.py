@@ -58,11 +58,103 @@ class UIController:
         self.queue_thread = threading.Thread(target=self.process_topic_queue, daemon=True)
         self.queue_thread.start()
         
+        # Initialize transcription method UI
+        self.root.after(500, self.initialize_transcription_method_ui)  # Delay to allow transcription system to initialize
+        
         self.root.after(100, self.update_ui_loop)
 
     def on_auto_submit_change(self, selected_mode: str):
         logger.info(f"UI Auto-Submit mode changed to: {selected_mode}")
         self.app_controller.set_auto_submit_mode(selected_mode)
+    
+    def on_transcription_method_change(self):
+        """Handle transcription method checkbox change"""
+        try:
+            use_api = self.view.get_transcription_method_preference()
+            method_name = "api" if use_api else "local"
+            
+            logger.info(f"UI Transcription method change requested: {method_name}")
+            
+            # Import transcription functions
+            from transcription import switch_transcription_method, get_current_transcription_method
+            
+            # Attempt to switch method
+            success = switch_transcription_method(method_name)
+            
+            if success:
+                current_method = get_current_transcription_method()
+                logger.info(f"Successfully switched transcription method to: {current_method}")
+                
+                # Update transcription status
+                self.view.update_transcription_status(current_method, False, f"Switched to {current_method}")
+                
+                # Update UI to reflect actual state
+                self._update_transcription_method_ui()
+            else:
+                logger.error(f"Failed to switch transcription method to: {method_name}")
+                
+                # Revert checkbox to previous state
+                self.view.transcription_method_var.set(not use_api)
+                
+                # Show error message
+                self.view.show_transcription_error("method_switch", f"Failed to switch to {method_name} transcription")
+                
+        except Exception as e:
+            logger.error(f"Error changing transcription method: {e}")
+            
+            # Revert checkbox and show error
+            use_api = self.view.get_transcription_method_preference()
+            self.view.transcription_method_var.set(not use_api)
+            self.view.show_transcription_error("exception", f"Transcription method change failed: {e}")
+    
+    def _update_transcription_method_ui(self):
+        """Update UI to reflect current transcription method state"""
+        try:
+            from transcription import get_transcription_capabilities, get_current_transcription_method
+            
+            capabilities = get_transcription_capabilities()
+            current_method = get_current_transcription_method()
+            
+            # Update the transcription method control
+            self.view.update_transcription_method_control(
+                gpu_available=capabilities["gpu_available"],
+                api_available=capabilities["api_available"],
+                current_method=current_method
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating transcription method UI: {e}")
+    
+    def initialize_transcription_method_ui(self):
+        """Initialize transcription method UI based on current capabilities"""
+        try:
+            self._update_transcription_method_ui()
+            self._update_transcription_status_display()
+        except Exception as e:
+            logger.error(f"Error initializing transcription method UI: {e}")
+    
+    def _update_transcription_status_display(self):
+        """Update the status display with current transcription method"""
+        try:
+            from transcription import get_current_transcription_method, get_transcription_health_status
+            
+            current_method = get_current_transcription_method()
+            if current_method:
+                # Check if fallback is active by examining health status
+                health_status = get_transcription_health_status()
+                is_fallback = False
+                
+                # Simple heuristic: if we have multiple strategies and errors on the primary
+                if len(health_status) > 1:
+                    for strategy_name, status in health_status.items():
+                        if strategy_name == current_method and status.get("error_count", 0) > 0:
+                            is_fallback = True
+                            break
+                
+                self.view.update_transcription_status(current_method, is_fallback)
+            
+        except Exception as e:
+            logger.error(f"Error updating transcription status display: {e}")
     
     def toggle_listening(self, *args):
         if self.view.listen_var.get():

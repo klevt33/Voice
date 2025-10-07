@@ -141,6 +141,33 @@ class ExceptionNotifier:
                 except Exception:
                     pass  # Avoid infinite recursion
     
+    def notify_transcription_fallback(self, from_method: str, to_method: str, reason: str = None):
+        """
+        Notify about transcription fallback activation
+        
+        Args:
+            from_method: Method that failed
+            to_method: Method being used as fallback
+            reason: Optional reason for fallback
+        """
+        try:
+            message = f"Transcription fallback: {from_method} → {to_method}"
+            if reason:
+                message += f" ({reason})"
+            
+            # Create a synthetic exception for the notification system
+            fallback_exception = Exception(f"Fallback from {from_method} to {to_method}: {reason or 'Method failed'}")
+            
+            self.notify_exception(
+                source="transcription_fallback",
+                exception=fallback_exception,
+                severity="warning",
+                user_message=message
+            )
+            
+        except Exception as e:
+            logger.error(f"Error notifying transcription fallback: {e}")
+    
     def clear_exception_status(self, source: str) -> None:
         """
         Clear exception status for a specific source (recovery detected).
@@ -215,7 +242,17 @@ class ExceptionNotifier:
         
         # Transcription errors
         if source == "transcription":
-            return "Transcription Error - Speech processing failed"
+            # Check for API-specific errors
+            if "authentication" in exception_str or "api key" in exception_str:
+                return "API Authentication Error - Check API key configuration"
+            elif "rate limit" in exception_str or "quota" in exception_str:
+                return "API Rate Limit Exceeded - Requests throttled"
+            elif "network" in exception_str or "connection" in exception_str:
+                return "API Network Error - Check internet connection"
+            elif "groq" in exception_str or "api" in exception_str:
+                return "API Transcription Error - Service unavailable"
+            else:
+                return "Transcription Error - Speech processing failed"
         
         # Generic error message
         return f"{source.title()} Error - {str(exception)[:50]}..."
@@ -260,7 +297,21 @@ class ExceptionNotifier:
         
         # Transcription errors
         if source == "transcription":
-            return "transcription_error"
+            # Check for API-specific error types
+            if "authentication" in exception_str or "api key" in exception_str:
+                return "api_auth_error"
+            elif "rate limit" in exception_str or "quota" in exception_str:
+                return "api_rate_limit"
+            elif "network" in exception_str or "connection" in exception_str:
+                return "api_network_error"
+            elif "groq" in exception_str or "api" in exception_str:
+                return "api_error"
+            else:
+                return "transcription_error"
+        
+        # Transcription fallback notifications
+        if source == "transcription_fallback":
+            return "transcription_fallback"
         
         # Default based on severity
         if notification.severity == ExceptionSeverity.ERROR:
