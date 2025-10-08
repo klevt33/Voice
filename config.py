@@ -105,21 +105,88 @@ def is_groq_api_available():
     api_key = get_groq_api_key()
     return api_key is not None and len(api_key.strip()) > 0
 
+def is_pytorch_available():
+    """Check if PyTorch is available"""
+    try:
+        import torch
+        return True
+    except ImportError:
+        return False
+
+def is_faster_whisper_available():
+    """Check if faster-whisper is available"""
+    try:
+        from faster_whisper import WhisperModel
+        return True
+    except ImportError:
+        return False
+
+def should_load_local_model():
+    """Determine if local model should be loaded based on configuration and availability"""
+    # Don't load local model if explicitly set to API only
+    if DEFAULT_TRANSCRIPTION_METHOD == "api":
+        return False
+    
+    # Don't load if PyTorch or faster-whisper not available
+    if not is_pytorch_available() or not is_faster_whisper_available():
+        return False
+    
+    # Load for "local" or "auto" modes when dependencies are available
+    return DEFAULT_TRANSCRIPTION_METHOD in ["local", "auto"]
+
 def validate_transcription_config():
     """Validate transcription configuration and return validation results"""
     validation_results = {
         "groq_api_available": is_groq_api_available(),
         "groq_api_key_configured": get_groq_api_key() is not None,
+        "pytorch_available": is_pytorch_available(),
+        "faster_whisper_available": is_faster_whisper_available(),
+        "should_load_local_model": should_load_local_model(),
         "config_valid": True,
         "warnings": [],
         "errors": []
     }
+    
+    # Check PyTorch availability
+    if not validation_results["pytorch_available"]:
+        validation_results["warnings"].append(
+            "PyTorch not available. Local GPU transcription will be unavailable."
+        )
+    
+    # Check faster-whisper availability
+    if not validation_results["faster_whisper_available"]:
+        validation_results["warnings"].append(
+            "faster-whisper not available. Local transcription will be unavailable."
+        )
     
     # Check API configuration
     if not validation_results["groq_api_key_configured"]:
         validation_results["warnings"].append(
             f"Groq API key not found in environment variable '{GROQ_API_KEY_ENV_VAR}'. API transcription will be unavailable."
         )
+    
+    # Check if at least one transcription method is available
+    has_local = validation_results["pytorch_available"] and validation_results["faster_whisper_available"]
+    has_api = validation_results["groq_api_available"]
+    
+    if not has_local and not has_api:
+        validation_results["errors"].append(
+            "No transcription methods available. Install PyTorch + faster-whisper or configure Groq API key."
+        )
+        validation_results["config_valid"] = False
+    
+    # Validate configuration against available methods
+    if DEFAULT_TRANSCRIPTION_METHOD == "local" and not has_local:
+        validation_results["errors"].append(
+            "DEFAULT_TRANSCRIPTION_METHOD is 'local' but local transcription is not available."
+        )
+        validation_results["config_valid"] = False
+    
+    if DEFAULT_TRANSCRIPTION_METHOD == "api" and not has_api:
+        validation_results["errors"].append(
+            "DEFAULT_TRANSCRIPTION_METHOD is 'api' but API transcription is not available."
+        )
+        validation_results["config_valid"] = False
     
     # Validate timeout values
     if API_REQUEST_TIMEOUT <= 0:

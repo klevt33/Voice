@@ -1,0 +1,15 @@
+# Minimal requirements for API-only transcription
+# This allows the app to run without PyTorch/faster-whisper dependencies
+
+# API transcription
+groq
+
+# Audio processing
+pyaudio
+pyaudiowpatch
+numpy
+
+# Browser automation and UI
+selenium
+pyperclip
+PyGetWindow

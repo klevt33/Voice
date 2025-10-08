@@ -3,12 +3,18 @@ import signal
 import sys
 import threading
 import queue
-import torch
 import logging
 import tkinter as tk
 import os
 from datetime import datetime, date
 from typing import List, Optional
+
+# PyTorch import is conditional - only needed for CUDA detection
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 from TopicsUI import UIController, Topic
 from managers import StateManager, ServiceManager
@@ -51,7 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Enable TF32 for better performance if available
-if torch.cuda.is_available():
+if TORCH_AVAILABLE and torch.cuda.is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 

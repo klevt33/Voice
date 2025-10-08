@@ -117,7 +117,7 @@ class UIController:
             
             # Update the transcription method control
             self.view.update_transcription_method_control(
-                gpu_available=capabilities["gpu_available"],
+                gpu_available=capabilities["local_available"],  # Use local_available instead of gpu_available
                 api_available=capabilities["api_available"],
                 current_method=current_method
             )

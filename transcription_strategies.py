@@ -140,8 +140,17 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
     def _initialize_model(self):
         """Initialize the faster-whisper model"""
         try:
-            import torch
-            from faster_whisper import WhisperModel
+            # Check if dependencies are available
+            try:
+                import torch
+            except ImportError:
+                raise TranscriptionError("PyTorch not available", self.get_name())
+            
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError:
+                raise TranscriptionError("faster-whisper not available", self.get_name())
+            
             from config import WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER
             
             # Determine device type - let faster-whisper handle the details
@@ -239,7 +248,14 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
     
     def is_available(self) -> bool:
         """Check if local transcription is available"""
-        return self._model is not None
+        try:
+            # Check if dependencies are available
+            import torch
+            from faster_whisper import WhisperModel
+            # Check if model was successfully initialized
+            return self._model is not None
+        except ImportError:
+            return False
     
     def get_name(self) -> str:
         """Get strategy name"""

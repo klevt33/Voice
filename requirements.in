@@ -1,19 +1,24 @@
 # This file lists the high-level application dependencies.
-# PyTorch must be installed manually using a specific CUDA index-url.
-# ctranslate2 automatically detects the CUDA version during 'pip install'.
+# 
+# TRANSCRIPTION OPTIONS:
+# The app supports two transcription methods:
+# 1. Local GPU/CPU transcription (requires PyTorch + faster-whisper)
+# 2. API transcription via Groq (requires groq package + API key)
+#
+# You can install either or both depending on your needs:
 
-# To install PyTorch run:
+# FOR LOCAL TRANSCRIPTION (optional):
+# Install PyTorch first:
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Then install faster-whisper dependencies:
+# faster-whisper
+# ctranslate2
+# sympy==1.13.1  # Pinned by torch==2.5.1+cu121
 
-# Pinned by torch==2.5.1+cu121. This is a critical dependency for PyTorch.
-sympy==1.13.1
-
-# Core transcription dependencies
-faster-whisper
-ctranslate2
-
-# API transcription integration
+# FOR API TRANSCRIPTION (optional):
 groq
+
+# REQUIRED DEPENDENCIES:
 
 # Audio processing
 pyaudio

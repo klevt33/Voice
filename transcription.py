@@ -1,18 +1,30 @@
 # transcription.py
 import io
 import time
-import torch
 import gc
 import queue
 import logging
 from typing import Dict, Optional, Any
-from faster_whisper import WhisperModel
 import os
 import re
 from datetime import datetime
 from TopicsUI import Topic
+
+# Conditional imports for optional dependencies
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+try:
+    from faster_whisper import WhisperModel
+    FASTER_WHISPER_AVAILABLE = True
+except ImportError:
+    FASTER_WHISPER_AVAILABLE = False
 from config import (WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER, LANGUAGE, BEAM_SIZE,
-                   DEFAULT_TRANSCRIPTION_METHOD, validate_transcription_config)
+                   DEFAULT_TRANSCRIPTION_METHOD, validate_transcription_config,
+                   is_pytorch_available, is_faster_whisper_available)
 from transcription_strategies import (TranscriptionManager, LocalGPUTranscriptionStrategy, 
                                     GroqAPITranscriptionStrategy, StrategyConfig)
 
@@ -25,8 +37,11 @@ _model_cache = {}
 # Global transcription manager instance
 _transcription_manager: Optional[TranscriptionManager] = None
 
-def get_whisper_model(model_name: str, device: str, compute_type: str) -> WhisperModel:
+def get_whisper_model(model_name: str, device: str, compute_type: str):
     """Get a cached whisper model or create a new one"""
+    if not FASTER_WHISPER_AVAILABLE:
+        raise ImportError("faster-whisper not available")
+    
     cache_key = f"{model_name}_{device}_{compute_type}"
     if cache_key not in _model_cache:
         logger.info(f"Creating new WhisperModel instance: {model_name} on {device}")
@@ -62,21 +77,24 @@ def initialize_transcription_manager() -> TranscriptionManager:
     # Create transcription manager
     manager = TranscriptionManager()
     
-    # Initialize local GPU strategy
-    try:
-        local_config = StrategyConfig(
-            name="local_gpu",
-            enabled=True,
-            priority=1,
-            timeout=30.0,
-            retry_count=1,
-            specific_config={}
-        )
-        local_strategy = LocalGPUTranscriptionStrategy(local_config)
-        manager.register_strategy(local_strategy)
-        logger.info("Local GPU transcription strategy registered")
-    except Exception as e:
-        logger.warning(f"Failed to initialize local GPU strategy: {e}")
+    # Initialize local GPU strategy only if needed and available
+    if config_validation["should_load_local_model"]:
+        try:
+            local_config = StrategyConfig(
+                name="local_gpu",
+                enabled=True,
+                priority=1,
+                timeout=30.0,
+                retry_count=1,
+                specific_config={}
+            )
+            local_strategy = LocalGPUTranscriptionStrategy(local_config)
+            manager.register_strategy(local_strategy)
+            logger.info("Local GPU transcription strategy registered")
+        except Exception as e:
+            logger.warning(f"Failed to initialize local GPU strategy: {e}")
+    else:
+        logger.info("Skipping local GPU strategy initialization (not needed or dependencies unavailable)")
     
     # Initialize Groq API strategy if available
     if config_validation["groq_api_available"]:
@@ -238,11 +256,11 @@ def get_transcription_health_status() -> Dict[str, Dict]:
 
 def is_gpu_available() -> bool:
     """Check if GPU is available for local transcription"""
-    try:
-        import torch
-        return torch.cuda.is_available()
-    except ImportError:
-        return False
+    return TORCH_AVAILABLE and FASTER_WHISPER_AVAILABLE and torch.cuda.is_available()
+
+def is_local_transcription_available() -> bool:
+    """Check if local transcription (GPU or CPU) is available"""
+    return TORCH_AVAILABLE and FASTER_WHISPER_AVAILABLE
 
 def is_api_available() -> bool:
     """Check if API transcription is available"""
@@ -251,10 +269,16 @@ def is_api_available() -> bool:
 
 def get_transcription_capabilities() -> Dict[str, bool]:
     """Get transcription capabilities for UI control"""
+    local_available = is_local_transcription_available()
+    api_available = is_api_available()
+    
     return {
         "gpu_available": is_gpu_available(),
-        "api_available": is_api_available(),
-        "both_available": is_gpu_available() and is_api_available(),
+        "local_available": local_available,
+        "api_available": api_available,
+        "both_available": local_available and api_available,
+        "pytorch_available": is_pytorch_available(),
+        "faster_whisper_available": is_faster_whisper_available(),
         "fallback_enabled": True  # Always enabled in our implementation
     }
 
@@ -303,13 +327,9 @@ def optimize_transcription_memory():
             gc.collect()
             
             # Clear CUDA cache if available
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    logger.debug("CUDA cache cleared")
-            except ImportError:
-                pass
+            if TORCH_AVAILABLE and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug("CUDA cache cleared")
                 
         logger.debug("Transcription memory optimization completed")
         
@@ -333,12 +353,8 @@ def cleanup_transcription_system():
         gc.collect()
         
         # Clear CUDA cache if available
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
+        if TORCH_AVAILABLE and torch.cuda.is_available():
+            torch.cuda.empty_cache()
             
         logger.info("Transcription system cleanup completed")
         
