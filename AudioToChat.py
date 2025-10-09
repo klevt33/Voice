@@ -132,6 +132,18 @@ class AudioToChat:
             return
 
         logger.info("Shutdown process started.")
+        
+        # Display shutdown message if UI is available and window still exists
+        if (hasattr(self, 'ui_controller') and self.ui_controller and 
+            hasattr(self.ui_controller, 'update_browser_status') and
+            self.root and self.root.winfo_exists()):
+            try:
+                self.ui_controller.update_browser_status("info", "Status: App is shutting down...")
+                # Force UI update to ensure message is displayed
+                self.root.update()
+            except Exception as e:
+                logger.error(f"Error displaying shutdown message: {e}")
+        
         self.state_manager.shutdown()
         self.service_manager.shutdown_services()
 
@@ -146,6 +158,16 @@ class AudioToChat:
 
     def on_closing_ui_initiated(self):
         logger.info("UI window closing event triggered.")
+        
+        # Display shutdown message in status bar
+        if self.ui_controller and hasattr(self.ui_controller, 'update_browser_status'):
+            try:
+                self.ui_controller.update_browser_status("info", "Status: App is shutting down...")
+                # Force UI update to ensure message is displayed
+                self.root.update()
+            except Exception as e:
+                logger.error(f"Error displaying shutdown message: {e}")
+        
         self.shutdown()
 
     # --- Callbacks for UIController ---
