@@ -255,7 +255,13 @@ class BrowserManager:
                 if not self.chat_page:
                     raise Exception("ChatPage is not initialized.")
 
-                # 0. Validate connection health before proceeding
+                # 0. Check if we're in a disconnected state and skip processing
+                if self.connection_monitor and self.connection_monitor.get_connection_state() == ConnectionState.DISCONNECTED:
+                    logger.info("Connection is disconnected - skipping batch processing to allow reconnection.")
+                    # Don't call task_done here - let the finally block handle it
+                    continue
+                
+                # 0.1. Validate connection health before proceeding (only if connected)
                 if self.connection_monitor and self.connection_monitor.get_connection_state() == ConnectionState.CONNECTED:
                     try:
                         if not self.test_connection_health():
@@ -266,7 +272,7 @@ class BrowserManager:
                         if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                             logger.warning(f"Connection health check detected connection error: {e}")
                             # Connection error will be handled by connection monitor, skip this batch
-                            for _ in all_items_in_batch: self.browser_queue.task_done()
+                            # Don't call task_done here - let the finally block handle it
                             continue
                         else:
                             logger.warning(f"Connection health check error (non-connection): {e}")
@@ -278,7 +284,7 @@ class BrowserManager:
                     if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                         logger.error(f"Connection error during focus browser window: {e}")
                         # Connection error will be handled by connection monitor, skip this batch
-                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        # Don't call task_done here - let the finally block handle it
                         continue
                     else:
                         # Non-connection error, log but continue
@@ -298,17 +304,17 @@ class BrowserManager:
                         
                     if not prime_success:
                         logger.error("Could not prime input field. Skipping batch.")
-                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        # Don't call task_done here - let the finally block handle it
                         continue
                 except Exception as e:
                     if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                         logger.error(f"Connection error during prime input: {e}")
                         # Connection error will be handled by connection monitor, skip this batch
-                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        # Don't call task_done here - let the finally block handle it
                         continue
                     else:
                         logger.error(f"Non-connection error during prime input: {e}")
-                        for _ in all_items_in_batch: self.browser_queue.task_done()
+                        # Don't call task_done here - let the finally block handle it
                         continue
 
                 # 3. Wait for the site to be ready for submission
@@ -332,7 +338,7 @@ class BrowserManager:
                         if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                             logger.warning(f"Connection error during ready check: {e}")
                             # Connection error will be handled by connection monitor, skip this batch
-                            for _ in all_items_in_batch: self.browser_queue.task_done()
+                            # Don't call task_done here - let the finally block handle it
                             # Use a flag to indicate we should skip the rest of the processing
                             is_ready = None  # Use None to indicate connection error vs timeout
                             break
@@ -349,7 +355,7 @@ class BrowserManager:
                 elif not is_ready:
                     logger.error("Timed out waiting for submit button. Aborting batch.")
                     self.ui_update_callback(SUBMISSION_FAILED_INPUT_UNAVAILABLE, [])
-                    for _ in all_items_in_batch: self.browser_queue.task_done()
+                    # Don't call task_done here - let the finally block handle it
                     continue
 
                 logger.info("Submit button is now active. Browser is ready.")
@@ -397,8 +403,9 @@ class BrowserManager:
                     except Exception as e:
                         if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                             logger.error(f"Message submission failed due to connection error: {e}")
-                            # Connection error will be handled by connection monitor
-                            # Don't call ui_update_callback here as the connection monitor will handle status updates
+                            # Connection error will be handled by connection monitor, but we still need to
+                            # notify the UI about the failed submission
+                            self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
                         else:
                             logger.error(f"Message submission failed due to non-connection error: {e}")
                             self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])

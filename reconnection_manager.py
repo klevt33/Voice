@@ -54,18 +54,20 @@ class ReconnectionManager:
             if success:
                 logger.info("Reconnection successful!")
                 
-                # Update connection monitor state
+                # Update connection monitor state BEFORE calling UI callback
                 if self.browser_manager.connection_monitor:
                     self.browser_manager.connection_monitor.set_connection_state(ConnectionState.CONNECTED)
                     self.browser_manager.connection_monitor.reset_error()
                 
-                # Only show "reconnected" status if browser is on correct page
-                # If not on correct page, the warning status from navigate_to_initial_page should remain
+                # Show reconnected status to indicate topic submission is ready
+                # Even if not on correct page, the connection is restored and topic submission should work
+                self.ui_callback("reconnected", None)
+                
+                # Log additional details about page status
                 if hasattr(self.browser_manager, 'on_correct_page') and self.browser_manager.on_correct_page:
-                    self.ui_callback("reconnected", None)
-                    logger.info("Reconnection completed - browser is on correct page.")
+                    logger.info("Reconnection completed - browser is on correct page and ready for topic submission.")
                 else:
-                    logger.info("Reconnection completed - browser not on correct page.")
+                    logger.info("Reconnection completed - browser connection restored (topic submission ready, but may need manual navigation).")
                 
                 return True
             else:
@@ -81,7 +83,8 @@ class ReconnectionManager:
                 return False
                 
         finally:
-            self.is_reconnecting = False
+            with self._reconnection_lock:
+                self.is_reconnecting = False
     
     def reconnect_with_backoff(self) -> bool:
         """
@@ -188,12 +191,48 @@ class ReconnectionManager:
                 logger.error("Failed to initialize chat page after reconnection.")
                 return False
             
+            # Reset any stuck state in the browser communication loop
+            # This ensures topic submission will work after reconnection
+            self._reset_communication_state()
+            
             logger.info("Browser state restored successfully.")
             return True
             
         except Exception as e:
             logger.error(f"Error restoring browser state: {e}")
             return False
+    
+    def _reset_communication_state(self):
+        """Reset communication state to ensure topic submission works after reconnection."""
+        try:
+            # The browser communication loop should be able to handle new submissions
+            # after reconnection. We don't need to restart the thread, just ensure
+            # the queue is ready to process new items.
+            
+            # Log the current queue state for debugging
+            if hasattr(self.browser_manager, 'browser_queue'):
+                try:
+                    queue_size = self.browser_manager.browser_queue.qsize()
+                    if queue_size > 0:
+                        logger.info(f"Browser queue has {queue_size} pending items after reconnection.")
+                    else:
+                        logger.info("Browser queue is empty after reconnection.")
+                except (AttributeError, TypeError):
+                    logger.debug("Could not check queue size (likely in test environment)")
+            
+            # Ensure the communication thread is still running
+            if (hasattr(self.browser_manager, 'run_threads_ref') and 
+                not self.browser_manager.run_threads_ref.get("active", False)):
+                logger.warning("Browser communication thread is not active after reconnection.")
+                # Restart the communication thread if it's not running
+                self.browser_manager.start_communication_thread()
+                logger.info("Restarted browser communication thread after reconnection.")
+            
+            logger.debug("Communication state reset completed.")
+            
+        except Exception as e:
+            logger.error(f"Error resetting communication state: {e}")
+            # Don't fail the reconnection for this, just log the error
     
     def get_reconnection_history(self) -> list:
         """Returns the history of reconnection attempts."""

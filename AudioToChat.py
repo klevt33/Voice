@@ -1,26 +1,6 @@
 # AudioToChat.py
-import signal
-import sys
-import threading
-import queue
-import logging
-import tkinter as tk
 import os
 from datetime import datetime, date
-from typing import List, Optional
-
-# PyTorch import is conditional - only needed for CUDA detection
-try:
-    import torch
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-
-from TopicsUI import UIController, Topic
-from managers import StateManager, ServiceManager
-from topic_router import TopicRouter
-from browser import SUBMISSION_SUCCESS, SUBMISSION_FAILED_INPUT_UNAVAILABLE, SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED, SUBMISSION_NO_CONTENT
-from exception_notifier import exception_notifier
 
 def setup_log_rotation(log_file_path: str = "transcription.log"):
     """
@@ -42,8 +22,30 @@ def setup_log_rotation(log_file_path: str = "transcription.log"):
     except Exception as e:
         print(f"Warning: Could not check/clear log file {log_file_path}: {e}")
 
-# Setup log rotation before configuring logging
+# Setup log rotation FIRST, before any imports that might trigger logging
 setup_log_rotation("transcription.log")
+
+# Now import everything else
+import signal
+import sys
+import threading
+import queue
+import logging
+import tkinter as tk
+from typing import List, Optional
+
+# PyTorch import is conditional - only needed for CUDA detection
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+from TopicsUI import UIController, Topic
+from managers import StateManager, ServiceManager
+from topic_router import TopicRouter
+from browser import SUBMISSION_SUCCESS, SUBMISSION_FAILED_INPUT_UNAVAILABLE, SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED, SUBMISSION_NO_CONTENT
+from exception_notifier import exception_notifier
 
 # Configure logging
 logging.basicConfig(

@@ -218,7 +218,8 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                     cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
                     
                     # Filter out likely hallucinations or junk
-                    if ("thank" in cleaned_text.lower() and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:
+                    lt = cleaned_text.casefold()  # robust case-insensitive matching
+                    if (("thank" in lt or "subtitles" in lt) and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:
                         self.logger.info(f"Filtered out likely hallucination: {cleaned_text}")
                         result_text = ""
                     else:
@@ -448,7 +449,8 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
             result_text = re.sub(r' {2,}', ' ', result_text)
             
             # Filter out likely hallucinations or junk
-            if ("thank" in result_text.lower() and len(result_text) <= 40) or len(result_text) <= 10:
+            lt = result_text.lower()  # case-insensitive matching
+            if (("thank" in lt or "subtitles" in lt) and len(result_text) <= 40) or len(result_text) <= 10:
                 self.logger.info(f"Filtered out likely hallucination: {result_text}")
                 result_text = ""
         

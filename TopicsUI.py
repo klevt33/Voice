@@ -409,6 +409,34 @@ class UIController:
     def submit_all_topics(self):
         self.submit_selected_topics(select_all_override=True)
 
+    def submit_from_selected_topics(self):
+        """Submit all topics from the first selected topic to the end of the list."""
+        context = self.view.context_text.get(1.0, tk.END).strip()
+        
+        # Find the first selected topic index
+        first_selected_index = None
+        for i, topic in enumerate(self.topics):
+            if topic.selected:
+                first_selected_index = i
+                break
+        
+        if first_selected_index is None:
+            self.update_browser_status("warning", "Status: No topics selected.")
+            return
+        
+        # Get all topics from first selected to end
+        topics_to_submit = self.topics[first_selected_index:]
+        
+        if not topics_to_submit:
+            self.update_browser_status("warning", "Status: No topics to submit.")
+            return
+
+        messages = [f"[CONTEXT] {context}"] if context else []
+        messages.extend([f"[{t.source}] {t.text}" for t in topics_to_submit])
+        
+        self.app_controller.submit_topics("\n".join(messages), topics_to_submit)
+        self.update_browser_status("info", f"Status: Submitted {len(topics_to_submit)} topics from selected...")
+
     def _format_topic_for_copy(self, topic: Topic, keep_prefix: bool) -> str:
         """Format a topic for copying based on prefix preference."""
         if keep_prefix:
@@ -448,7 +476,12 @@ class UIController:
             for topic in self.topics:
                 if id(topic) in submitted_ids:
                     topic.submitted = True
-            logger.info(f"Marked {len(submitted_topics)} topics as submitted in UI.")
+            
+            # Deselect all topics after submission (as if user clicked Deselect All)
+            for topic in self.topics:
+                topic.selected = False
+            
+            logger.info(f"Marked {len(submitted_topics)} topics as submitted and deselected all topics in UI.")
         else:
             # Delete submitted behavior: remove submitted topics
             # Check if the last clicked topic is being removed and if it was selected

@@ -120,17 +120,26 @@ class ConnectionMonitor:
     
     def _handle_connection_loss(self):
         """Initiates the recovery process when connection loss is detected."""
-        if self.connection_state != ConnectionState.DISCONNECTED:
-            logger.info("Connection loss detected, updating state and initiating recovery.")
-            self._update_connection_state(ConnectionState.DISCONNECTED)
-            
-            # Update UI to show connection lost status
-            self.ui_callback("connection_lost", None)
-            
-            # Trigger automatic reconnection if reconnection manager is available
-            if self.reconnection_manager:
-                logger.info("Triggering automatic reconnection attempt.")
-                self.reconnection_manager.attempt_reconnection()
+        logger.info("Connection loss detected, updating state and initiating recovery.")
+        
+        # Always update to disconnected state
+        self._update_connection_state(ConnectionState.DISCONNECTED)
+        
+        # Update UI to show connection lost status
+        self.ui_callback("connection_lost", None)
+        
+        # Trigger automatic reconnection if reconnection manager is available
+        # Only trigger if not already reconnecting
+        if (self.reconnection_manager and 
+            not self.reconnection_manager.is_reconnection_in_progress()):
+            logger.info("Triggering automatic reconnection attempt.")
+            # Run reconnection in a separate thread to avoid blocking
+            import threading
+            reconnect_thread = threading.Thread(
+                target=self.reconnection_manager.attempt_reconnection,
+                daemon=True
+            )
+            reconnect_thread.start()
     
     def _update_connection_state(self, new_state: ConnectionState):
         """Updates the connection state and logs the change."""

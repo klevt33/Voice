@@ -294,6 +294,7 @@ class UIView(ttk.Frame):
         
         # Submit buttons (right side)
         ttk.Button(parent, text="Submit Selected", command=self.controller.submit_selected_topics).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(parent, text="Submit From Selected", command=self.controller.submit_from_selected_topics).pack(side=tk.LEFT, padx=5)
         ttk.Button(parent, text="Submit All", command=self.controller.submit_all_topics).pack(side=tk.LEFT, padx=5)
 
     def get_keep_prefix_state(self) -> bool:
