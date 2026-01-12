@@ -228,6 +228,17 @@ class ReconnectionManager:
                 self.browser_manager.start_communication_thread()
                 logger.info("Restarted browser communication thread after reconnection.")
             
+            # Add a small test item to the queue to wake up the communication loop
+            # This ensures the loop will process any pending items after reconnection
+            if hasattr(self.browser_manager, 'browser_queue'):
+                try:
+                    # Add a minimal wake-up item that will be processed and discarded
+                    wake_up_item = {"content": "", "topic_objects": [], "_wake_up": True}
+                    self.browser_manager.browser_queue.put(wake_up_item)
+                    logger.debug("Added wake-up item to browser queue to resume processing.")
+                except Exception as e:
+                    logger.debug(f"Could not add wake-up item to queue: {e}")
+            
             logger.debug("Communication state reset completed.")
             
         except Exception as e:

@@ -219,7 +219,7 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                     
                     # Filter out likely hallucinations or junk
                     lt = cleaned_text.casefold()  # robust case-insensitive matching
-                    if (("thank" in lt or "subtitles" in lt) and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:
+                    if (("thank" in lt or "subtitles" in lt or "captions" in lt) and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:
                         self.logger.info(f"Filtered out likely hallucination: {cleaned_text}")
                         result_text = ""
                     else:

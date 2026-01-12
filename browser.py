@@ -266,7 +266,9 @@ class BrowserManager:
                     try:
                         if not self.test_connection_health():
                             logger.warning("Connection health check failed - skipping batch to allow reconnection.")
-                            for _ in all_items_in_batch: self.browser_queue.task_done()
+                            # Treat health check failure as a connection error to trigger recovery
+                            self.connection_monitor._handle_connection_loss()
+                            # Don't call task_done here - let the finally block handle it
                             continue
                     except Exception as e:
                         if self.connection_monitor and self.connection_monitor.is_connection_error(e):
@@ -290,8 +292,28 @@ class BrowserManager:
                         # Non-connection error, log but continue
                         logger.warning(f"Non-connection error during focus browser window: {e}")
                 
-                # 2. Prime the input field to enable the submit button
-                logger.info("Work detected. Priming input field with 'Waiting...' ")
+                # 2. Drain the queue to get all available items
+                while not self.browser_queue.empty():
+                    try:
+                        all_items_in_batch.append(self.browser_queue.get_nowait())
+                    except queue.Empty:
+                        break
+
+                # 3. Filter out wake-up items early to determine if we need to prime
+                real_items = [item for item in all_items_in_batch if not item.get('_wake_up', False)]
+                wake_up_items = [item for item in all_items_in_batch if item.get('_wake_up', False)]
+                
+                if wake_up_items:
+                    logger.debug(f"Processed {len(wake_up_items)} wake-up items to resume communication loop.")
+                
+                if not real_items:
+                    # Only wake-up items, no actual content to submit - skip priming and submission
+                    logger.debug("No real content to submit, only wake-up items processed.")
+                    # Don't call UI callback for wake-up items, just continue to finally block
+                    continue
+
+                # 4. Prime the input field to enable the submit button (only for real content)
+                logger.info("Real content detected. Priming input field with 'Waiting...' ")
                 
                 def _prime_operation():
                     return self.chat_page.prime_input()
@@ -317,7 +339,7 @@ class BrowserManager:
                         # Don't call task_done here - let the finally block handle it
                         continue
 
-                # 3. Wait for the site to be ready for submission
+                # 5. Wait for the site to be ready for submission
                 logger.info("Input primed. Waiting for submit button to become active...")
                 is_ready = False
                 start_time = time.time()
@@ -360,14 +382,7 @@ class BrowserManager:
 
                 logger.info("Submit button is now active. Browser is ready.")
 
-                # 4. Drain the queue to get all available items NOW that the browser is ready
-                while not self.browser_queue.empty():
-                    try:
-                        all_items_in_batch.append(self.browser_queue.get_nowait())
-                    except queue.Empty:
-                        break
-
-                # 5. Handle screenshots
+                # 6. Handle screenshots
                 def _screenshot_operation():
                     return self._handle_screenshot_upload()
                 
@@ -379,12 +394,13 @@ class BrowserManager:
                 except Exception as e:
                     logger.warning(f"Screenshot upload failed due to connection error: {e}")
 
-                # 6. Construct final payload and submit
-                logger.info(f"Processing a batch of {len(all_items_in_batch)} items.")
+                # 7. Construct final payload and submit
+                logger.info(f"Processing a batch of {len(real_items)} real items (plus {len(wake_up_items)} wake-up items).")
+                
                 message_prompt = self.chat_config.get("prompt_message_content", "").strip()
-                combined_topics_content = "\n".join(item['content'] for item in all_items_in_batch if item.get('content'))
+                combined_topics_content = "\n".join(item['content'] for item in real_items if item.get('content'))
                 final_payload = f"{message_prompt}\n\n{combined_topics_content}" if message_prompt else combined_topics_content
-                combined_topic_objects = [topic for item in all_items_in_batch for topic in item.get('topic_objects', [])]
+                combined_topic_objects = [topic for item in real_items for topic in item.get('topic_objects', [])]
                 
                 if final_payload.strip():
                     def _submit_operation():
@@ -410,7 +426,9 @@ class BrowserManager:
                             logger.error(f"Message submission failed due to non-connection error: {e}")
                             self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
                 else:
-                    self.ui_update_callback(SUBMISSION_NO_CONTENT, combined_topic_objects)
+                    # Only notify UI if we have real topic objects (not just wake-up items)
+                    if combined_topic_objects:
+                        self.ui_update_callback(SUBMISSION_NO_CONTENT, combined_topic_objects)
 
             except Exception as e:
                 logger.error(f"Failed to process and submit batch: {e}", exc_info=True)
