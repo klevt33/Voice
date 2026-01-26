@@ -4,10 +4,10 @@ import pyaudio
 
 # DLL Paths
 DLL_PATHS = [
-    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
-    # r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
-    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
-    r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
+    r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
+    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
+    # r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
 ]
 
 # Audio configuration
@@ -62,8 +62,8 @@ TOPIC_STORAGE_FOLDER = r"C:\Transcripts"  # Default storage path
 CHATS = {
     "Perplexity": {
         "url": "https://www.perplexity.ai/",
-        "prompt_init_file": r"prompts\prompt_init.txt",
-        "prompt_msg_file": r"prompts\prompt_msg.txt",
+        "prompt_init_file": r"prompts\prompt_init_interview.txt",
+        "prompt_msg_file": r"prompts\prompt_msg_interview.txt",
         "css_selector_input": "[id='ask-input']",
         "submit_button_selector": "button[aria-label='Submit']",
         "attach_files_button_selector": "button[aria-label='Attach files']",
@@ -74,8 +74,8 @@ CHATS = {
     },
     "ChatGPT": {
         "url": "https://chatgpt.com/",
-        "prompt_init_file": r"prompts\prompt_init.txt", # Use a separate prompt for ChatGPT
-        "prompt_msg_file": r"prompts\prompt_msg.txt",   # and a separate message prompt
+        "prompt_init_file": r"prompts\prompt_init_interview.txt", # Use a separate prompt for ChatGPT
+        "prompt_msg_file": r"prompts\prompt_msg_interview.txt",   # and a separate message prompt
         # Using ID is very reliable.
         "css_selector_input": "[id='prompt-textarea']", 
         # Using data-testid is very reliable for automation.

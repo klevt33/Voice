@@ -263,16 +263,32 @@ class AudioToChat:
 
         def _update_task():
             if status == SUBMISSION_SUCCESS:
-                is_manual_submission = bool(submitted_topics)
+                is_manual_submission = any(not t.submitted for t in submitted_topics) if submitted_topics else False
+                is_auto_submission = any(t.submitted for t in submitted_topics) if submitted_topics else False
+                
                 if is_manual_submission:
+                    # Manual submission - clear topics from UI as before
                     self.ui_controller.clear_successfully_submitted_topics(submitted_topics)
                     self.ui_controller.clear_full_text_display()
-                self.ui_controller.update_browser_status("browser_ready", "Status: Topics submitted successfully.")
-                if is_manual_submission and self.service_manager.browser_manager:
-                    self.service_manager.browser_manager.focus_browser_window()
+                    self.ui_controller.update_browser_status("browser_ready", "Status: Topics submitted successfully.")
+                    if self.service_manager.browser_manager:
+                        self.service_manager.browser_manager.focus_browser_window()
+                elif is_auto_submission:
+                    # Auto submission - topics are already marked as submitted and grayed out
+                    self.ui_controller.update_browser_status("browser_ready", "Status: Auto-submitted topics sent successfully.")
+                else:
+                    # No topics (wake-up or empty submission)
+                    self.ui_controller.update_browser_status("browser_ready", "Status: Submission completed.")
+                    
             elif status == SUBMISSION_FAILED_HUMAN_VERIFICATION_DETECTED:
+                # For failed submissions, unmark auto-submitted topics so they can be retried
+                if submitted_topics:
+                    self._unmark_failed_auto_submitted_topics(submitted_topics)
                 self.ui_controller.update_browser_status("browser_human_verification", "AI: Verify Human! (Topics NOT Sent)")
             elif status == SUBMISSION_FAILED_INPUT_UNAVAILABLE:
+                # For failed submissions, unmark auto-submitted topics so they can be retried
+                if submitted_topics:
+                    self._unmark_failed_auto_submitted_topics(submitted_topics)
                 self.ui_controller.update_browser_status("browser_input_unavailable", "AI: Input Unavail. (Topics NOT Sent)")
             elif status == SUBMISSION_NO_CONTENT:
                  self.ui_controller.update_browser_status("warning", "Status: No content was sent.")
@@ -285,9 +301,16 @@ class AudioToChat:
             elif status == "connection_failed":
                 self.ui_controller.update_browser_status("connection_failed")
             else:
+                # For failed submissions, unmark auto-submitted topics so they can be retried
+                if submitted_topics:
+                    self._unmark_failed_auto_submitted_topics(submitted_topics)
                 self.ui_controller.update_browser_status("error", "Status: Failed to send topics to AI.")
         
         self.root.after(0, _update_task)
+    
+    def _unmark_failed_auto_submitted_topics(self, failed_topics: List[Topic]):
+        """Unmark auto-submitted topics that failed so they can be retried"""
+        self.ui_controller.unmark_failed_auto_submitted_topics(failed_topics)
 
     def _thread_safe_status_update(self, status_key: str, message: str):
         """Thread-safe wrapper for UI status updates from exception notifier."""

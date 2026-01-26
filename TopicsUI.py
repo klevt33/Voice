@@ -235,6 +235,30 @@ class UIController:
 
     def add_topic_to_queue(self, topic: Topic):
         self.topic_queue.put(topic)
+    
+    def mark_topic_as_auto_submitted(self, topic: Topic):
+        """Mark a topic as auto-submitted (will appear grayed out in UI)"""
+        # Find the topic in our list and mark it as submitted
+        for t in self.topics:
+            if t is topic:  # Use identity comparison since it's the same object
+                t.submitted = True
+                logger.info(f"Marked topic as auto-submitted: [{t.source}] {t.text[:50]}...")
+                break
+    
+    def unmark_failed_auto_submitted_topics(self, failed_topics: List[Topic]):
+        """Unmark auto-submitted topics that failed so they can be retried"""
+        for failed_topic in failed_topics:
+            for t in self.topics:
+                if t is failed_topic and t.submitted:  # Only unmark topics that were auto-submitted
+                    t.submitted = False
+                    logger.info(f"Unmarked failed auto-submitted topic for retry: [{t.source}] {t.text[:50]}...")
+                    break
+    
+    def get_failed_auto_submitted_topics(self) -> List[Topic]:
+        """Get topics that were auto-submitted but are now unmarked (failed)"""
+        # These are topics that were auto-submitted, failed, and are now available for retry
+        # They would be topics that are not submitted and not selected (since auto-submit doesn't select them)
+        return [t for t in self.topics if not t.submitted and not t.selected]
 
     def process_topic_queue(self):
         while self.processing:
