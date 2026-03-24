@@ -20,7 +20,9 @@ class UIView(ttk.Frame):
         # Initialize keep prefix preference (default: False)
         self.keep_prefix_var = tk.BooleanVar(value=False)
         
-        # Transcription method checkbox will be created in _create_transcription_method_toggle_title_level
+        # Transcription method dropdown will be created in _create_transcription_method_selector
+        self.transcription_method_var = tk.StringVar(value="")
+        self.transcription_method_menu = None
 
         self.create_widgets()
 
@@ -53,8 +55,8 @@ class UIView(ttk.Frame):
         # --- List Frame Widgets ---
         self._create_list_frame_widgets(self.list_frame)
         
-        # --- Transcription Method Toggle (positioned at title level) ---
-        self._create_transcription_method_toggle_title_level()
+        # --- Transcription Method Selector (positioned at title level) ---
+        self._create_transcription_method_selector()
 
         # --- Full Text Widget ---
         self.full_text = scrolledtext.ScrolledText(self.text_frame, wrap=tk.WORD, height=3, state="disabled")
@@ -140,65 +142,56 @@ class UIView(ttk.Frame):
         self.listen_var.trace_add("write", self.controller.toggle_listening)
         self.create_toggle_switch(parent, "Listen", self.listen_var).pack(side=tk.LEFT, padx=5)
 
-    def _create_transcription_method_toggle_title_level(self):
-        """Create transcription method toggle positioned at the title level of the topics frame"""
-        self.transcription_method_var = tk.BooleanVar(value=False)
-        
-        # Create checkbox for API transcription
-        self.transcription_method_checkbox = ttk.Checkbutton(
+    def _create_transcription_method_selector(self):
+        """Create transcription method dropdown positioned at the title level of the topics frame"""
+        self.transcription_method_menu = ttk.OptionMenu(
             self.list_frame,
-            text="Use API",
-            variable=self.transcription_method_var,
+            self.transcription_method_var,
+            "",  # initial placeholder — will be populated by update_transcription_method_control
             command=self.controller.on_transcription_method_change
         )
-        
-        # Position it in the top-right corner of the Topics frame border
-        # Similar to Show Context but with different offset to avoid overlap
-        self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
-        
-        # Initially hidden - will be shown/configured by controller based on availability
-        self.transcription_method_checkbox.place_forget()
+        # Position matches the old checkbox location
+        self.transcription_method_menu.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
+        # Initially hidden — shown once capabilities are known
+        self.transcription_method_menu.place_forget()
 
-    def update_transcription_method_control(self, gpu_available: bool, api_available: bool, current_method: str = None):
+    def update_transcription_method_control(self, available_methods: dict, current_method: str = None):
         """
-        Update transcription method control based on availability
-        
+        Update transcription method dropdown based on available methods.
+
         Args:
-            gpu_available: Whether GPU transcription is available
-            api_available: Whether API transcription is available  
-            current_method: Current transcription method name
+            available_methods: dict mapping display name -> bool (is available)
+            current_method: Current transcription method display name
         """
-        if not gpu_available and not api_available:
-            # No transcription methods available - hide control
-            self.transcription_method_checkbox.place_forget()
-            return
-        
-        if not gpu_available and api_available:
-            # Only API available - show disabled checkbox (checked)
-            self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
-            self.transcription_method_var.set(True)
-            self.transcription_method_checkbox.config(state="disabled", text="API Only")
-            return
-        
-        if gpu_available and not api_available:
-            # Only GPU available - show disabled checkbox (unchecked)  
-            self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
-            self.transcription_method_var.set(False)
-            self.transcription_method_checkbox.config(state="disabled", text="Local Only")
-            return
-        
-        if gpu_available and api_available:
-            # Both available - show enabled checkbox
-            self.transcription_method_checkbox.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
-            self.transcription_method_checkbox.config(state="normal", text="Use API")
-            
-            # Set checkbox based on current method
-            if current_method:
-                is_api = "api" in current_method.lower() or "groq" in current_method.lower()
-                self.transcription_method_var.set(is_api)
+        options = [name for name, avail in available_methods.items() if avail]
 
-    def get_transcription_method_preference(self) -> bool:
-        """Get transcription method preference (False=Local, True=API)"""
+        if not options:
+            self.transcription_method_menu.place_forget()
+            return
+
+        # Rebuild the menu options
+        menu = self.transcription_method_menu["menu"]
+        menu.delete(0, "end")
+        for opt in options:
+            menu.add_command(label=opt, command=lambda v=opt: (
+                self.transcription_method_var.set(v),
+                self.controller.on_transcription_method_change(v)
+            ))
+
+        # Set current selection
+        if current_method and current_method in options:
+            self.transcription_method_var.set(current_method)
+        elif options:
+            self.transcription_method_var.set(options[0])
+
+        # Disable when only one option, but still show it
+        state = "disabled" if len(options) <= 1 else "normal"
+        self.transcription_method_menu.config(state=state)
+
+        self.transcription_method_menu.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=-25)
+
+    def get_transcription_method_preference(self) -> str:
+        """Get transcription method preference as display name string"""
         return self.transcription_method_var.get()
 
     def _create_status_bar(self, parent):
@@ -223,6 +216,7 @@ class UIView(ttk.Frame):
             "transcription_local_gpu": ("green", "Transcription: Local GPU"),
             "transcription_local_cpu": ("blue", "Transcription: Local CPU"),
             "transcription_api": ("purple", "Transcription: Groq API"),
+            "transcription_network_gpu": ("#006400", "Transcription: Network GPU"),
             "transcription_fallback": ("#FF8C00", "Transcription: Fallback Active"),
             "transcription_switching": ("blue", "Switching transcription method..."),
             "transcription_method_error": ("red", "Transcription method error"),
@@ -326,7 +320,9 @@ class UIView(ttk.Frame):
         
         # Determine status key based on method name
         method_lower = method_name.lower()
-        if "cuda" in method_lower or ("gpu" in method_lower and "cuda" in method_lower):
+        if "network" in method_lower or "network_gpu" in method_lower:
+            status_key = "transcription_network_gpu"
+        elif "cuda" in method_lower or ("gpu" in method_lower and "cuda" in method_lower):
             status_key = "transcription_local_gpu"
         elif "cpu" in method_lower or ("local" in method_lower and "cpu" in method_lower):
             status_key = "transcription_local_cpu"

@@ -220,44 +220,98 @@ class ExceptionNotifier:
         with self._lock:
             return self._active_exceptions.copy()
     
+    def _should_deduplicate(self, existing: ExceptionNotification, new: ExceptionNotification) -> bool:
+        """Check if a new exception should be deduplicated with an existing one."""
+        time_diff = new.timestamp - existing.timestamp
+        return (time_diff.total_seconds() <= self.DEDUPLICATION_WINDOW and
+                existing.get_message_hash() == new.get_message_hash())
+
+    def _classify_exception(self, source: str, exception: Exception) -> str:
+        """
+        Classify an exception into a category string used by both
+        _generate_user_message and _get_status_key.
+
+        Returns one of: "cuda_oom", "cuda_driver", "cuda", "audio_device",
+        "audio", "api_auth", "api_rate_limit", "api_network", "api",
+        "transcription", "transcription_fallback", or "generic".
+        """
+        exception_str = str(exception).lower()
+
+        # Audio source check takes priority over CUDA keyword matching
+        if source.startswith("audio"):
+            if "device" in exception_str or "errno" in exception_str:
+                return "audio_device"
+            return "audio"
+
+        if any(k in exception_str for k in ["cuda", "gpu"]):
+            if "out of memory" in exception_str:
+                return "cuda_oom"
+            if "driver" in exception_str:
+                return "cuda_driver"
+            return "cuda"
+
+        # "device" in exception only maps to CUDA when source is not audio
+        if "device" in exception_str:
+            return "cuda"
+
+        if source == "transcription_fallback":
+            return "transcription_fallback"
+
+        if source == "transcription":
+            if "authentication" in exception_str or "api key" in exception_str:
+                return "api_auth"
+            if "rate limit" in exception_str or "quota" in exception_str:
+                return "api_rate_limit"
+            if "network" in exception_str or "connection" in exception_str:
+                return "api_network"
+            if "groq" in exception_str or "api" in exception_str:
+                return "api"
+            return "transcription"
+
+        return "generic"
+
     def _generate_user_message(self, source: str, exception: Exception, severity: ExceptionSeverity) -> str:
         """Generate a user-friendly message for an exception."""
-        exception_str = str(exception).lower()
-        
-        # CUDA-specific error detection
-        if any(keyword in exception_str for keyword in ["cuda", "gpu", "device"]):
-            if "out of memory" in exception_str:
-                return "CUDA Error - GPU out of memory"
-            elif "driver" in exception_str:
-                return "CUDA Error - GPU driver issue"
-            else:
-                return "CUDA Error - Transcription unavailable"
-        
-        # Audio-specific error detection
-        if source.startswith("audio"):
-            if "device" in exception_str:
-                return "Audio Device Error - Check microphone connection"
-            else:
-                return "Audio Error - Recording issue detected"
-        
-        # Transcription errors
-        if source == "transcription":
-            # Check for API-specific errors
-            if "authentication" in exception_str or "api key" in exception_str:
-                return "API Authentication Error - Check API key configuration"
-            elif "rate limit" in exception_str or "quota" in exception_str:
-                return "API Rate Limit Exceeded - Requests throttled"
-            elif "network" in exception_str or "connection" in exception_str:
-                return "API Network Error - Check internet connection"
-            elif "groq" in exception_str or "api" in exception_str:
-                return "API Transcription Error - Service unavailable"
-            else:
-                return "Transcription Error - Speech processing failed"
-        
-        # Generic error message
-        return f"{source.title()} Error - {str(exception)[:50]}..."
-    
-    def _should_deduplicate(self, existing: ExceptionNotification, new: ExceptionNotification) -> bool:
+        category = self._classify_exception(source, exception)
+        messages = {
+            "cuda_oom":             "CUDA Error - GPU out of memory",
+            "cuda_driver":          "CUDA Error - GPU driver issue",
+            "cuda":                 "CUDA Error - Transcription unavailable",
+            "audio_device":         "Audio Device Error - Check microphone connection",
+            "audio":                "Audio Error - Recording issue detected",
+            "api_auth":             "API Authentication Error - Check API key configuration",
+            "api_rate_limit":       "API Rate Limit Exceeded - Requests throttled",
+            "api_network":          "API Network Error - Check internet connection",
+            "api":                  "API Transcription Error - Service unavailable",
+            "transcription":        "Transcription Error - Speech processing failed",
+            "transcription_fallback": str(exception)[:80],
+        }
+        return messages.get(category, f"{source.capitalize()} Error - {str(exception)[:50]}...")
+
+    def _get_status_key(self, notification: ExceptionNotification) -> str:
+        """Determine the appropriate status key for a notification."""
+        category = self._classify_exception(notification.source, notification.exception)
+        keys = {
+            "cuda_oom":             "cuda_error",
+            "cuda_driver":          "cuda_error",
+            "cuda":                 "cuda_error",
+            "audio_device":         "audio_error",
+            "audio":                "audio_error",
+            "api_auth":             "api_auth_error",
+            "api_rate_limit":       "api_rate_limit",
+            "api_network":          "api_network_error",
+            "api":                  "api_error",
+            "transcription":        "transcription_error",
+            "transcription_fallback": "transcription_fallback",
+        }
+        if category in keys:
+            return keys[category]
+        # generic — fall back to severity
+        if notification.severity == ExceptionSeverity.ERROR:
+            return "error"
+        if notification.severity == ExceptionSeverity.WARNING:
+            return "warning"
+        return "info"
         """Check if a new exception should be deduplicated with an existing one."""
         time_diff = new.timestamp - existing.timestamp
         return (time_diff.total_seconds() <= self.DEDUPLICATION_WINDOW and
@@ -281,45 +335,6 @@ class ExceptionNotifier:
             
         except Exception as e:
             logger.error(f"Error updating UI status: {e}")
-    
-    def _get_status_key(self, notification: ExceptionNotification) -> str:
-        """Determine the appropriate status key for a notification."""
-        source = notification.source
-        exception_str = str(notification.exception).lower()
-        
-        # CUDA errors get special treatment
-        if any(keyword in exception_str for keyword in ["cuda", "gpu"]):
-            return "cuda_error"
-        
-        # Audio errors
-        if source.startswith("audio"):
-            return "audio_error"
-        
-        # Transcription errors
-        if source == "transcription":
-            # Check for API-specific error types
-            if "authentication" in exception_str or "api key" in exception_str:
-                return "api_auth_error"
-            elif "rate limit" in exception_str or "quota" in exception_str:
-                return "api_rate_limit"
-            elif "network" in exception_str or "connection" in exception_str:
-                return "api_network_error"
-            elif "groq" in exception_str or "api" in exception_str:
-                return "api_error"
-            else:
-                return "transcription_error"
-        
-        # Transcription fallback notifications
-        if source == "transcription_fallback":
-            return "transcription_fallback"
-        
-        # Default based on severity
-        if notification.severity == ExceptionSeverity.ERROR:
-            return "error"
-        elif notification.severity == ExceptionSeverity.WARNING:
-            return "warning"
-        else:
-            return "info"
     
     def _add_to_history(self, source: str, notification: ExceptionNotification):
         """Add notification to history with size limits."""

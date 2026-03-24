@@ -222,6 +222,65 @@ def _wait_for_sound(stream, source: str, run_threads_ref: Dict[str, bool], audio
                 time.sleep(1)
     return None
 
+def _record_until_silence(
+    stream,
+    source: str,
+    mic: Dict[str, Any],
+    run_threads_ref: Dict[str, bool],
+    consecutive_silence_required: int,
+    audio_monitor=None,
+    exception_notifier=None,
+) -> Optional[bool]:
+    """
+    Read from *stream* into mic["frames"] until silence or max duration.
+
+    Returns:
+        True  — max duration reached (caller should check for continuation)
+        False — silence detected (normal end of utterance)
+        None  — stream error (stream reference set to None in mic["stream"])
+    """
+    recording_start_time = time.time()
+    silence_counter = 0
+
+    while mic["recording"] and run_threads_ref["active"] and run_threads_ref.get("listening", True):
+        try:
+            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+            mic["frames"].append(data)
+
+            elapsed_time = time.time() - recording_start_time
+            if elapsed_time >= MAX_RECORDING_DURATION:
+                logger.info(
+                    f"Maximum recording duration ({MAX_RECORDING_DURATION}s) reached for {source}. "
+                    "Completing current fragment."
+                )
+                mic["recording"] = False
+                return True  # max duration reached
+
+            level = get_audio_level(data)
+            if level <= SILENCE_THRESHOLD:
+                silence_counter += 1
+                if silence_counter >= consecutive_silence_required:
+                    logger.info(f"Silence detected on {source} for {SILENCE_DURATION}s. Recording stopped.")
+                    mic["recording"] = False
+            else:
+                silence_counter = 0
+
+        except Exception as e:
+            if run_threads_ref["active"]:
+                logger.error(f"Error during {source} recording: {e}")
+                if exception_notifier:
+                    exception_notifier.notify_exception(
+                        "audio_recording", e, "warning", f"Audio Recording Error - {source}"
+                    )
+                if audio_monitor:
+                    audio_monitor.handle_audio_error(source, e)
+                mic["recording"] = False
+                mic["stream"] = None  # signal stream recreation
+                return None  # stream error
+
+    return False  # silence / listening-off
+
+
 def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]], 
                     audio_queue: queue.Queue, service_manager, 
                     run_threads_ref: Dict[str, bool], audio_monitor=None, exception_notifier=None) -> None:
@@ -370,54 +429,21 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
 
             mic["recording"] = True
             mic["frames"] = initial_chunks.copy()  # Start with all the initial chunks
-            recording_start_time = time.time()  # Track recording start time
-            max_duration_reached = False
-            
-            # 2. Record until silence is consistently detected or max duration reached
-            silence_counter = 0
             consecutive_silence_required = FRAMES_PER_BUFFER
-            
-            while mic["recording"] and run_threads_ref["active"] and run_threads_ref.get("listening", True):
-                try:
-                    data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-                    mic["frames"].append(data)
-                    
-                    # Check if maximum recording duration is exceeded
-                    elapsed_time = time.time() - recording_start_time
-                    if elapsed_time >= MAX_RECORDING_DURATION:
-                        logger.info(f"Maximum recording duration ({MAX_RECORDING_DURATION}s) reached for {source} microphone. Completing current fragment.")
-                        max_duration_reached = True
-                        mic["recording"] = False
-                        break
-                    
-                    level = get_audio_level(data)
-                    if level <= SILENCE_THRESHOLD:
-                        silence_counter += 1
-                        if silence_counter >= consecutive_silence_required:
-                            logger.info(f"Silence detected on {source} microphone for {SILENCE_DURATION}s. Recording stopped.")
-                            mic["recording"] = False
-                    else:
-                        silence_counter = 0
-                except Exception as e:
-                    if run_threads_ref["active"]:
-                        logger.error(f"Error during {source} recording: {e}")
-                        
-                        # Notify about audio recording error
-                        if exception_notifier:
-                            exception_notifier.notify_exception("audio_recording", e, "warning", 
-                                                              f"Audio Recording Error - {source}")
-                        
-                        if audio_monitor:
-                            audio_monitor.handle_audio_error(source, e)
-                        # Stop current recording and force stream recreation
-                        mic["recording"] = False
-                        stream = None
-                        break
-            
+
+            # 2. Record until silence or max duration
+            max_duration_reached = _record_until_silence(
+                stream, source, mic, run_threads_ref,
+                consecutive_silence_required, audio_monitor, exception_notifier
+            )
+            if max_duration_reached is None:
+                # Stream error — _record_until_silence already set mic["stream"] = None
+                stream = None
+
             if not run_threads_ref.get("listening", True) and mic["recording"]:
                 logger.info(f"Listening turned off while recording from {source}. Stopping recording.")
                 mic["recording"] = False
-            
+
             # 3. Process the recording
             if mic["frames"]:
                 current_audio = get_current_audio()
@@ -425,63 +451,25 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                     device_info = mic.get("device_info")
                     process_recording(mic["frames"], source, current_audio, audio_queue, device_info, exception_notifier)
                 mic["frames"] = []
-            
+
             # 4. If max duration was reached, check if sound continues for new fragment
-            if max_duration_reached and run_threads_ref["active"] and run_threads_ref.get("listening", True):
+            if max_duration_reached and stream and run_threads_ref["active"] and run_threads_ref.get("listening", True):
                 try:
-                    # Check current audio level to see if sound is still present
                     data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
                     level = get_audio_level(data)
-                    
+
                     if level > SILENCE_THRESHOLD:
-                        logger.info(f"Sound continues after max duration reached on {source} microphone. Starting new fragment.")
-                        # Continue the loop to start a new recording fragment
-                        # The loop will restart from step 1, but we already have sound, so we can start recording immediately
+                        logger.info(f"Sound continues after max duration on {source}. Starting new fragment.")
                         mic["recording"] = True
                         mic["frames"] = [data]
-                        recording_start_time = time.time()
-                        max_duration_reached = False
-                        
-                        # Continue recording the new fragment
-                        silence_counter = 0
-                        while mic["recording"] and run_threads_ref["active"] and run_threads_ref.get("listening", True):
-                            try:
-                                data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-                                mic["frames"].append(data)
-                                
-                                # Check if maximum recording duration is exceeded again
-                                elapsed_time = time.time() - recording_start_time
-                                if elapsed_time >= MAX_RECORDING_DURATION:
-                                    logger.info(f"Maximum recording duration ({MAX_RECORDING_DURATION}s) reached again for {source} microphone. Completing current fragment.")
-                                    max_duration_reached = True
-                                    mic["recording"] = False
-                                    break
-                                
-                                level = get_audio_level(data)
-                                if level <= SILENCE_THRESHOLD:
-                                    silence_counter += 1
-                                    if silence_counter >= consecutive_silence_required:
-                                        logger.info(f"Silence detected on {source} microphone for {SILENCE_DURATION}s. Recording stopped.")
-                                        mic["recording"] = False
-                                else:
-                                    silence_counter = 0
-                            except Exception as e:
-                                if run_threads_ref["active"]:
-                                    logger.error(f"Error during {source} recording continuation: {e}")
-                                    
-                                    # Notify about audio recording error
-                                    if exception_notifier:
-                                        exception_notifier.notify_exception("audio_recording", e, "warning", 
-                                                                          f"Audio Recording Error - {source}")
-                                    
-                                    if audio_monitor:
-                                        audio_monitor.handle_audio_error(source, e)
-                                    # Stop current recording and force stream recreation
-                                    mic["recording"] = False
-                                    stream = None
-                                    break
-                        
-                        # Process the continuation fragment
+
+                        cont_result = _record_until_silence(
+                            stream, source, mic, run_threads_ref,
+                            consecutive_silence_required, audio_monitor, exception_notifier
+                        )
+                        if cont_result is None:
+                            stream = None
+
                         if mic["frames"]:
                             current_audio = get_current_audio()
                             if current_audio:
@@ -491,15 +479,12 @@ def recording_thread(source: str, mic_data: Dict[str, Dict[str, Any]],
                 except Exception as e:
                     if run_threads_ref["active"]:
                         logger.error(f"Error checking for sound continuation on {source}: {e}")
-                        
-                        # Notify about audio recording error
                         if exception_notifier:
-                            exception_notifier.notify_exception("audio_recording", e, "warning", 
-                                                              f"Audio Recording Error - {source}")
-                        
+                            exception_notifier.notify_exception(
+                                "audio_recording", e, "warning", f"Audio Recording Error - {source}"
+                            )
                         if audio_monitor:
                             audio_monitor.handle_audio_error(source, e)
-                        # Force stream recreation on next iteration
                         stream = None
     
     finally:

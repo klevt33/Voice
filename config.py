@@ -4,10 +4,10 @@ import pyaudio
 
 # DLL Paths
 DLL_PATHS = [
-    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
-    r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
-    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
-    # r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
+    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
+    # r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
+    r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
 ]
 
 # Audio configuration
@@ -38,10 +38,16 @@ API_RETRY_COUNT = 3                    # Number of retry attempts for failed API
 API_RETRY_BACKOFF = 2.0               # Exponential backoff multiplier for retries
 
 # Transcription Method Configuration
-DEFAULT_TRANSCRIPTION_METHOD = "auto"  # "local", "api", "auto" (auto = prefer local GPU if available)
+DEFAULT_TRANSCRIPTION_METHOD = "auto"  # "local", "api", "auto", "network_gpu" (auto = prefer local GPU if available)
 ENABLE_FALLBACK = True                 # Enable automatic fallback between transcription methods
 FALLBACK_RETRY_LIMIT = 3              # Maximum number of fallback attempts before giving up
 FALLBACK_COOLDOWN_PERIOD = 60.0       # Cooldown period in seconds before retrying failed method
+
+# Network GPU Transcription Configuration
+NETWORK_GPU_SERVER_URL = "http://localhost:8765"  # URL of the network GPU transcription server
+NETWORK_GPU_TIMEOUT = 30.0                        # Timeout for network GPU requests in seconds
+NETWORK_GPU_ENABLED = False                       # Enable network GPU transcription strategy
+NETWORK_GPU_API_KEY = None                        # Optional Bearer token; None = auth disabled
 
 # Chat configuration
 CHAT = "Perplexity"    # Default chat to use: "Perplexity" or "ChatGPT"
@@ -142,6 +148,8 @@ def validate_transcription_config():
         "pytorch_available": is_pytorch_available(),
         "faster_whisper_available": is_faster_whisper_available(),
         "should_load_local_model": should_load_local_model(),
+        "network_gpu_enabled": NETWORK_GPU_ENABLED,
+        "network_gpu_server_url": NETWORK_GPU_SERVER_URL,
         "config_valid": True,
         "warnings": [],
         "errors": []
@@ -206,11 +214,23 @@ def validate_transcription_config():
         validation_results["config_valid"] = False
     
     # Validate transcription method
-    valid_methods = ["local", "api", "auto"]
+    valid_methods = ["local", "api", "auto", "network_gpu"]
     if DEFAULT_TRANSCRIPTION_METHOD not in valid_methods:
         validation_results["errors"].append(
             f"DEFAULT_TRANSCRIPTION_METHOD must be one of {valid_methods}, got '{DEFAULT_TRANSCRIPTION_METHOD}'"
         )
         validation_results["config_valid"] = False
-    
+
+    # Validate network GPU configuration
+    if NETWORK_GPU_ENABLED and not NETWORK_GPU_SERVER_URL:
+        validation_results["errors"].append(
+            "NETWORK_GPU_ENABLED is True but NETWORK_GPU_SERVER_URL is empty."
+        )
+        validation_results["config_valid"] = False
+
+    if DEFAULT_TRANSCRIPTION_METHOD == "network_gpu" and not NETWORK_GPU_ENABLED:
+        validation_results["warnings"].append(
+            "DEFAULT_TRANSCRIPTION_METHOD is 'network_gpu' but NETWORK_GPU_ENABLED is False."
+        )
+
     return validation_results

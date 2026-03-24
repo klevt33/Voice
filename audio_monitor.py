@@ -188,69 +188,6 @@ class AudioMonitor:
             logger.error(f"Error refreshing device list: {e}")
             return False
 
-    def _perform_audio_reconnection(self, source: str) -> bool:
-        """
-        Performs a single audio reconnection attempt for a specific source.
-        
-        Args:
-            source: The audio source to reconnect
-            
-        Returns:
-            True if reconnection succeeded, False otherwise
-        """
-        try:
-            logger.info(f"Attempting to reinitialize audio for {source}...")
-            
-            # Step 1: Mark stream as needing recreation (let recording thread handle cleanup)
-            logger.info(f"Marking existing stream for recreation: {source}")
-            if source in self.service_manager.mic_data:
-                mic_info = self.service_manager.mic_data[source]
-                if mic_info.get("stream"):
-                    # Don't close stream here - let recording thread handle it safely
-                    # Just mark it as needing recreation by clearing the reference
-                    logger.info(f"Marking stream for recreation: {source}")
-                    mic_info["stream"] = None
-            
-            # Step 2: Refresh device list (without recreating PyAudio instance)
-            logger.info("Refreshing device list...")
-            if not self._refresh_microphone_list():
-                logger.warning(f"Failed to refresh device list for {source}")
-                # Continue anyway - maybe the devices are still accessible
-            
-            # Step 4: Detect current default device for this source (same as startup logic)
-            from audio_device_utils import get_default_microphone_info, get_default_speakers_loopback_info, validate_device_info, format_device_info
-            
-            if source == "ME":
-                device_info = get_default_microphone_info(self.service_manager.audio)
-            elif source == "OTHERS":
-                device_info = get_default_speakers_loopback_info(self.service_manager.audio)
-            else:
-                logger.error(f"Unknown audio source: {source}")
-                return False
-            
-            if not validate_device_info(device_info, source):
-                if source == "ME":
-                    logger.error(f"Failed to detect valid device for {source}")
-                    return False
-                else:
-                    logger.warning(f"OTHERS device not available - disabling {source}")
-                    device_info = None
-            
-            # Step 5: Update device info in mic_data (same as startup)
-            self.service_manager.mic_data[source]["device_info"] = device_info
-            
-            if device_info:
-                logger.info(f"Detected device for {source}: {format_device_info(device_info)}")
-            else:
-                logger.info(f"{source} device disabled")
-            
-            logger.info(f"Audio reconnection completed for {source}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error during audio reconnection for {source}: {e}")
-            return False
-    
     def get_connection_state(self) -> AudioConnectionState:
         """Returns the current audio connection state."""
         return self.connection_state

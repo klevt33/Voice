@@ -23,10 +23,12 @@ try:
 except ImportError:
     FASTER_WHISPER_AVAILABLE = False
 from config import (WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER, LANGUAGE, BEAM_SIZE,
-                   DEFAULT_TRANSCRIPTION_METHOD, validate_transcription_config,
+                   DEFAULT_TRANSCRIPTION_METHOD, NETWORK_GPU_ENABLED, NETWORK_GPU_TIMEOUT,
+                   validate_transcription_config,
                    is_pytorch_available, is_faster_whisper_available)
 from transcription_strategies import (TranscriptionManager, LocalGPUTranscriptionStrategy, 
-                                    GroqAPITranscriptionStrategy, StrategyConfig)
+                                    GroqAPITranscriptionStrategy, NetworkGPUTranscriptionStrategy,
+                                    StrategyConfig)
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -113,6 +115,23 @@ def initialize_transcription_manager() -> TranscriptionManager:
         except Exception as e:
             logger.warning(f"Failed to initialize Groq API strategy: {e}")
     
+    # Initialize Network GPU strategy if enabled
+    if NETWORK_GPU_ENABLED:
+        try:
+            net_config = StrategyConfig(
+                name="network_gpu",
+                enabled=True,
+                priority=3,
+                timeout=NETWORK_GPU_TIMEOUT,
+                retry_count=0,
+                specific_config={}
+            )
+            net_strategy = NetworkGPUTranscriptionStrategy(net_config)
+            manager.register_strategy(net_strategy)
+            logger.info("Network GPU transcription strategy registered")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Network GPU strategy: {e}")
+
     # Set up primary and fallback strategies based on configuration and availability
     available_strategies = manager.get_available_strategies()
     logger.info(f"Available transcription strategies: {available_strategies}")
@@ -141,6 +160,19 @@ def initialize_transcription_manager() -> TranscriptionManager:
             fallback_set = True
         elif available_strategies.get("Local GPU (CPU)", False):
             manager.set_fallback_strategy("Local GPU (CPU)")
+            fallback_set = True
+    elif DEFAULT_TRANSCRIPTION_METHOD == "network_gpu" and available_strategies.get("Network GPU", False):
+        manager.set_primary_strategy("Network GPU")
+        primary_set = True
+        # Fallback to local GPU or API
+        if available_strategies.get("Local GPU (CUDA)", False):
+            manager.set_fallback_strategy("Local GPU (CUDA)")
+            fallback_set = True
+        elif available_strategies.get("Local GPU (CPU)", False):
+            manager.set_fallback_strategy("Local GPU (CPU)")
+            fallback_set = True
+        elif available_strategies.get("Groq API", False):
+            manager.set_fallback_strategy("Groq API")
             fallback_set = True
     else:  # auto mode or fallback
         # Prefer local GPU if available, otherwise API
@@ -197,7 +229,9 @@ def switch_transcription_method(method_name: str) -> bool:
         "local_cpu": "Local GPU (CPU)",
         "api": "Groq API",
         "groq": "Groq API",
-        "groq_api": "Groq API"
+        "groq_api": "Groq API",
+        "network_gpu": "Network GPU",
+        "network": "Network GPU"
     }
     
     # Try direct name first, then mapping
@@ -537,7 +571,7 @@ def _handle_transcription_error(exception_notifier, error_message: str, method_u
     # Create exception object with method context
     error_exception = Exception(f"[{method_used}] {error_message}")
     
-    if "cuda" in error_lower or "gpu" in error_lower:
+    if "cuda" in error_lower or ("gpu" in error_lower and "network" not in error_lower):
         if "out of memory" in error_lower:
             exception_notifier.notify_exception("transcription", error_exception, "error", 
                                               "CUDA Error - GPU out of memory")
@@ -547,6 +581,9 @@ def _handle_transcription_error(exception_notifier, error_message: str, method_u
         else:
             exception_notifier.notify_exception("transcription", error_exception, "error", 
                                               "CUDA Error - Transcription unavailable")
+    elif "connection failed" in error_lower or ("network" in error_lower and "gpu" in error_lower):
+        exception_notifier.notify_exception("transcription", error_exception, "warning",
+                                          "Network GPU unreachable - Check server")
     elif "authentication_error" in error_lower or "api key" in error_lower:
         exception_notifier.notify_exception("transcription", error_exception, "error", 
                                           "API Authentication Error - Check API key")

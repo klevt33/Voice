@@ -6,11 +6,47 @@ import logging
 import os
 import time
 import io
+import re
+import requests
 from datetime import datetime
 from audio_handler import AudioSegment
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
+
+
+def apply_hallucination_filter(text: str) -> str:
+    """
+    Filter out likely hallucinations or junk from transcription output.
+
+    Removes text that matches known whisper hallucination patterns:
+    - Short phrases containing "thank", "subtitles", or "captions" (≤ 40 chars)
+    - Any result of 10 characters or fewer
+
+    Returns the original text if it passes, or "" if filtered.
+    """
+    lt = text.casefold()
+    if (
+        ("thank" in lt or "subtitles" in lt or "captions" in lt)
+        and len(text) <= 40
+    ) or len(text) <= 10:
+        return ""
+    return text
+
+def process_whisper_segments(segments) -> str:
+    """
+    Join faster-whisper segment objects into a single cleaned, filtered string.
+
+    Combines all segment texts, collapses extra whitespace, and applies the
+    hallucination filter.  Returns an empty string for empty/filtered results.
+    """
+    segment_list = list(segments)
+    if not segment_list:
+        return ""
+    transcript_text = " ".join(seg.text for seg in segment_list)
+    cleaned_text = re.sub(r" {2,}", " ", transcript_text.strip())
+    return apply_hallucination_filter(cleaned_text)
+
 
 @dataclass
 class TranscriptionResult:
@@ -187,7 +223,6 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
         
         try:
             from config import LANGUAGE, BEAM_SIZE
-            import re
             
             # Get audio data as WAV bytes
             audio_data = audio_segment.get_wav_bytes()
@@ -204,26 +239,9 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                 )
                 
                 # Process the transcript
-                segment_list = list(segments)  # Convert generator to list
-                
-                if not segment_list:
-                    # No speech detected
-                    result_text = ""
-                else:
-                    # Combine all segments into one continuous text
-                    transcript_text = " ".join(segment.text for segment in segment_list)
-                    cleaned_text = transcript_text.strip()
-                    
-                    # Replace multiple consecutive spaces with a single space
-                    cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
-                    
-                    # Filter out likely hallucinations or junk
-                    lt = cleaned_text.casefold()  # robust case-insensitive matching
-                    if (("thank" in lt or "subtitles" in lt or "captions" in lt) and len(cleaned_text) <= 40) or len(cleaned_text) <= 10:
-                        self.logger.info(f"Filtered out likely hallucination: {cleaned_text}")
-                        result_text = ""
-                    else:
-                        result_text = cleaned_text
+                result_text = process_whisper_segments(segments)
+                if not result_text:
+                    self.logger.info("Filtered out likely hallucination from local GPU transcription")
             
             processing_time = time.time() - start_time
             self._record_success()
@@ -442,17 +460,13 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
         """Process and filter transcription response"""
         result_text = transcription.text.strip() if transcription.text else ""
         
-        # Apply same filtering as local transcription
         if result_text:
-            import re
             # Replace multiple consecutive spaces with a single space
             result_text = re.sub(r' {2,}', ' ', result_text)
-            
-            # Filter out likely hallucinations or junk
-            lt = result_text.lower()  # case-insensitive matching
-            if (("thank" in lt or "subtitles" in lt) and len(result_text) <= 40) or len(result_text) <= 10:
+            filtered = apply_hallucination_filter(result_text)
+            if not filtered:
                 self.logger.info(f"Filtered out likely hallucination: {result_text}")
-                result_text = ""
+            result_text = filtered
         
         return result_text
     
@@ -500,6 +514,113 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
             self.logger.info("Groq API transcription resources cleaned up")
         except Exception as e:
             self.logger.warning(f"Error during API cleanup: {e}")
+
+
+class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
+    """Network GPU transcription strategy — sends WAV bytes to a remote HTTP server"""
+
+    AVAILABILITY_CACHE_TTL = 10.0
+
+    def __init__(self, config: StrategyConfig):
+        super().__init__(config)
+        self._availability_cache: Optional[bool] = None
+        self._availability_cache_time: Optional[float] = None
+
+    def get_name(self) -> str:
+        """Get strategy name"""
+        return "Network GPU"
+
+    def is_available(self) -> bool:
+        """Check server health with a 10-second cache"""
+        now = time.monotonic()
+        if (
+            self._availability_cache is not None
+            and self._availability_cache_time is not None
+            and (now - self._availability_cache_time) < self.AVAILABILITY_CACHE_TTL
+        ):
+            return self._availability_cache
+
+        try:
+            from config import NETWORK_GPU_SERVER_URL
+            response = requests.get(
+                f"{NETWORK_GPU_SERVER_URL}/health",
+                timeout=3.0
+            )
+            result = (
+                response.status_code == 200
+                and response.json().get("status") == "ok"
+            )
+        except Exception:
+            result = False
+
+        self._availability_cache = result
+        self._availability_cache_time = time.monotonic()
+        return result
+
+    def transcribe(self, audio_segment: AudioSegment) -> TranscriptionResult:
+        """Send WAV bytes to the network GPU server and return a TranscriptionResult"""
+        from config import NETWORK_GPU_SERVER_URL, NETWORK_GPU_TIMEOUT, NETWORK_GPU_API_KEY
+
+        start_time = time.time()
+
+        try:
+            wav_bytes = audio_segment.get_wav_bytes()
+
+            headers = {"Content-Type": "application/octet-stream"}
+            if NETWORK_GPU_API_KEY:
+                headers["Authorization"] = f"Bearer {NETWORK_GPU_API_KEY}"
+
+            response = requests.post(
+                f"{NETWORK_GPU_SERVER_URL}/transcribe",
+                data=wav_bytes,
+                headers=headers,
+                timeout=NETWORK_GPU_TIMEOUT
+            )
+
+            processing_time = time.time() - start_time
+
+            if response.status_code == 200:
+                data = response.json()
+                self._record_success()
+                return TranscriptionResult(
+                    text=data.get("text", ""),
+                    method_used="network_gpu",
+                    processing_time=processing_time,
+                    fallback_used=False
+                )
+            else:
+                error_message = f"HTTP {response.status_code}: {response.text}"
+                self._record_error(Exception(error_message))
+                return TranscriptionResult(
+                    text="",
+                    method_used="network_gpu",
+                    processing_time=processing_time,
+                    fallback_used=False,
+                    error_message=error_message
+                )
+
+        except (requests.ConnectionError, requests.Timeout) as e:
+            processing_time = time.time() - start_time
+            error_message = f"Connection failed: {e}"
+            self._record_error(e)
+            return TranscriptionResult(
+                text="",
+                method_used="network_gpu",
+                processing_time=processing_time,
+                fallback_used=False,
+                error_message=error_message
+            )
+        except Exception as e:
+            processing_time = time.time() - start_time
+            error_message = f"Unexpected error: {e}"
+            self._record_error(e)
+            return TranscriptionResult(
+                text="",
+                method_used="network_gpu",
+                processing_time=processing_time,
+                fallback_used=False,
+                error_message=error_message
+            )
 
 
 class TranscriptionManager:

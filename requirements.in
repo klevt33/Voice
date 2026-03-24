@@ -18,6 +18,13 @@
 # FOR API TRANSCRIPTION (optional):
 groq
 
+# FOR NETWORK GPU SERVER (optional - required on the GPU server machine):
+fastapi
+uvicorn[standard]
+
+# FOR NETWORK GPU CLIENT (required when NETWORK_GPU_ENABLED=True):
+requests
+
 # REQUIRED DEPENDENCIES:
 
 # Audio processing
