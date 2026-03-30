@@ -44,23 +44,6 @@ _transcription_manager: Optional[TranscriptionManager] = None
 # Global ModelServiceManager instance (set when ModelService is used)
 _model_service_manager: Optional[ModelServiceManager] = None
 
-def get_whisper_model(model_name: str, device: str, compute_type: str):
-    """Get a cached whisper model or create a new one"""
-    if not FASTER_WHISPER_AVAILABLE:
-        raise ImportError("faster-whisper not available")
-    
-    cache_key = f"{model_name}_{device}_{compute_type}"
-    if cache_key not in _model_cache:
-        logger.info(f"Creating new WhisperModel instance: {model_name} on {device}")
-        _model_cache[cache_key] = WhisperModel(
-            model_name,
-            device=device,
-            compute_type=compute_type,
-            download_root=MODELS_FOLDER
-        )
-    else:
-        logger.info(f"Using cached WhisperModel instance: {model_name}")
-    return _model_cache[cache_key]
 
 def initialize_transcription_manager() -> TranscriptionManager:
     """Initialize and configure the transcription manager"""

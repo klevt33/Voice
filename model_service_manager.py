@@ -25,12 +25,28 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Config — resolved once at import time
+# ---------------------------------------------------------------------------
+
+try:
+    from config import (
+        MODEL_SERVICE_ENABLED,
+        MODEL_SERVICE_URL,
+        MODEL_SERVICE_PORT,
+        MODEL_SERVICE_STARTUP_TIMEOUT,
+        MODEL_SERVICE_API_KEY,
+        WHISPER_MODEL,
+    )
+except ImportError as _cfg_err:
+    raise ImportError(f"model_service_manager requires config.py: {_cfg_err}") from _cfg_err
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +98,6 @@ class ModelServiceManager:
         compatibility against WHISPER_MODEL from config.
         """
         try:
-            from config import MODEL_SERVICE_URL, WHISPER_MODEL
-        except ImportError as exc:
-            logger.error(f"Cannot import config: {exc}")
-            return HealthProbeResult(reachable=False, model_name=None, compatible=False)
-
-        try:
             response = requests.get(f"{MODEL_SERVICE_URL}/health", timeout=2.0)
             if response.status_code != 200:
                 return HealthProbeResult(reachable=False, model_name=None, compatible=False)
@@ -123,12 +133,6 @@ class ModelServiceManager:
 
         Returns the Popen object on success, or None if the launch fails.
         """
-        try:
-            from config import MODEL_SERVICE_PORT, MODEL_SERVICE_API_KEY, WHISPER_MODEL
-        except ImportError as exc:
-            logger.error(f"Cannot import config for spawn: {exc}")
-            return None
-
         # Locate model_service.py relative to this file
         service_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_service.py")
         if not os.path.exists(service_script):
@@ -166,15 +170,9 @@ class ModelServiceManager:
             if proc.poll() is not None:
                 logger.warning(f"ModelService subprocess (pid: {proc.pid}) exited prematurely with code {proc.returncode}")
                 return False
-            result = self.probe()
-            if result.compatible:
+            if self.probe().compatible:
                 return True
             time.sleep(0.5)
-
-        try:
-            from config import MODEL_SERVICE_STARTUP_TIMEOUT
-        except ImportError:
-            MODEL_SERVICE_STARTUP_TIMEOUT = timeout
 
         logger.warning(
             f"ModelService failed to start within {timeout:.1f}s — falling back to local model load"
@@ -189,15 +187,9 @@ class ModelServiceManager:
         """Main entry point: probe → connect or spawn → fallback.
 
         Returns a ModelServiceResult.  If available=True, use result.url
-        with NetworkGPUTranscriptionStrategy.  If available=False, fall back
+        with ModelServiceTranscriptionStrategy.  If available=False, fall back
         to loading the model in-process.
         """
-        try:
-            from config import MODEL_SERVICE_ENABLED, MODEL_SERVICE_URL, MODEL_SERVICE_STARTUP_TIMEOUT
-        except ImportError as exc:
-            logger.error(f"Cannot import config: {exc}")
-            return ModelServiceResult(available=False, url="", spawned=False, pid=None)
-
         self._url = MODEL_SERVICE_URL
 
         if not MODEL_SERVICE_ENABLED:
