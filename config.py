@@ -4,10 +4,10 @@ import pyaudio
 
 # DLL Paths
 DLL_PATHS = [
-    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
-    # r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
-    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
-    r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
+    r"C:\Program Files\NVIDIA\CUDNN\v9.10\bin\12.9"
+    # r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin",
+    # r"C:\Program Files\NVIDIA\CUDNN\v8\bin"
 ]
 
 # Audio configuration
@@ -48,6 +48,16 @@ NETWORK_GPU_SERVER_URL = "http://localhost:8765"  # URL of the network GPU trans
 NETWORK_GPU_TIMEOUT = 30.0                        # Timeout for network GPU requests in seconds
 NETWORK_GPU_ENABLED = False                       # Enable network GPU transcription strategy
 NETWORK_GPU_API_KEY = None                        # Optional Bearer token; None = auth disabled
+
+# Shared Model Service Configuration
+# When enabled, both the App and the Server probe localhost:MODEL_SERVICE_PORT at startup.
+# Whichever starts first spawns ModelService as a subprocess; the second simply connects.
+# This prevents double-loading the Whisper model into GPU memory.
+MODEL_SERVICE_ENABLED = True                      # Enable shared ModelService spawn-or-connect
+MODEL_SERVICE_PORT = 8766                         # Localhost port for ModelService
+MODEL_SERVICE_STARTUP_TIMEOUT = 30.0              # Seconds to wait for ModelService to become healthy
+MODEL_SERVICE_API_KEY = None                      # Optional Bearer token passed to ModelService; None = auth disabled
+MODEL_SERVICE_URL = f"http://localhost:{MODEL_SERVICE_PORT}"  # Derived base URL
 
 # Chat configuration
 CHAT = "Perplexity"    # Default chat to use: "Perplexity" or "ChatGPT"

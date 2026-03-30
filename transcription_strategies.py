@@ -525,6 +525,17 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
         super().__init__(config)
         self._availability_cache: Optional[bool] = None
         self._availability_cache_time: Optional[float] = None
+        # Allow specific_config to override the global NETWORK_GPU_SERVER_URL.
+        # This is used by the ModelService integration to point to port 8766
+        # instead of the default NETWORK_GPU_SERVER_URL (port 8765).
+        self._server_url_override: Optional[str] = config.specific_config.get("server_url")
+
+    def _get_server_url(self) -> str:
+        """Return the effective server URL (override takes precedence over config)."""
+        if self._server_url_override:
+            return self._server_url_override
+        from config import NETWORK_GPU_SERVER_URL
+        return NETWORK_GPU_SERVER_URL
 
     def get_name(self) -> str:
         """Get strategy name"""
@@ -541,9 +552,9 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
             return self._availability_cache
 
         try:
-            from config import NETWORK_GPU_SERVER_URL
+            server_url = self._get_server_url()
             response = requests.get(
-                f"{NETWORK_GPU_SERVER_URL}/health",
+                f"{server_url}/health",
                 timeout=3.0
             )
             result = (
@@ -559,8 +570,9 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
 
     def transcribe(self, audio_segment: AudioSegment) -> TranscriptionResult:
         """Send WAV bytes to the network GPU server and return a TranscriptionResult"""
-        from config import NETWORK_GPU_SERVER_URL, NETWORK_GPU_TIMEOUT, NETWORK_GPU_API_KEY
+        from config import NETWORK_GPU_TIMEOUT, NETWORK_GPU_API_KEY
 
+        server_url = self._get_server_url()
         start_time = time.time()
 
         try:
@@ -571,7 +583,7 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
                 headers["Authorization"] = f"Bearer {NETWORK_GPU_API_KEY}"
 
             response = requests.post(
-                f"{NETWORK_GPU_SERVER_URL}/transcribe",
+                f"{server_url}/transcribe",
                 data=wav_bytes,
                 headers=headers,
                 timeout=NETWORK_GPU_TIMEOUT
@@ -621,6 +633,18 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
                 fallback_used=False,
                 error_message=error_message
             )
+
+
+class ModelServiceTranscriptionStrategy(NetworkGPUTranscriptionStrategy):
+    """Transcription strategy that delegates to the shared ModelService subprocess.
+
+    Functionally identical to NetworkGPUTranscriptionStrategy but reports itself
+    as "Local GPU (Shared)" so the UI correctly identifies it as a local GPU mode
+    rather than a remote network GPU server.
+    """
+
+    def get_name(self) -> str:
+        return "Local GPU (Shared)"
 
 
 class TranscriptionManager:

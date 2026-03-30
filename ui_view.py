@@ -322,7 +322,7 @@ class UIView(ttk.Frame):
         method_lower = method_name.lower()
         if "network" in method_lower or "network_gpu" in method_lower:
             status_key = "transcription_network_gpu"
-        elif "cuda" in method_lower or ("gpu" in method_lower and "cuda" in method_lower):
+        elif "shared" in method_lower or "cuda" in method_lower or ("gpu" in method_lower and "network" not in method_lower):
             status_key = "transcription_local_gpu"
         elif "cpu" in method_lower or ("local" in method_lower and "cpu" in method_lower):
             status_key = "transcription_local_cpu"

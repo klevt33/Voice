@@ -24,11 +24,13 @@ except ImportError:
     FASTER_WHISPER_AVAILABLE = False
 from config import (WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER, LANGUAGE, BEAM_SIZE,
                    DEFAULT_TRANSCRIPTION_METHOD, NETWORK_GPU_ENABLED, NETWORK_GPU_TIMEOUT,
+                   MODEL_SERVICE_ENABLED, MODEL_SERVICE_URL,
                    validate_transcription_config,
                    is_pytorch_available, is_faster_whisper_available)
 from transcription_strategies import (TranscriptionManager, LocalGPUTranscriptionStrategy, 
                                     GroqAPITranscriptionStrategy, NetworkGPUTranscriptionStrategy,
-                                    StrategyConfig)
+                                    ModelServiceTranscriptionStrategy, StrategyConfig)
+from model_service_manager import ModelServiceManager
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -38,6 +40,9 @@ _model_cache = {}
 
 # Global transcription manager instance
 _transcription_manager: Optional[TranscriptionManager] = None
+
+# Global ModelServiceManager instance (set when ModelService is used)
+_model_service_manager: Optional[ModelServiceManager] = None
 
 def get_whisper_model(model_name: str, device: str, compute_type: str):
     """Get a cached whisper model or create a new one"""
@@ -59,7 +64,7 @@ def get_whisper_model(model_name: str, device: str, compute_type: str):
 
 def initialize_transcription_manager() -> TranscriptionManager:
     """Initialize and configure the transcription manager"""
-    global _transcription_manager
+    global _transcription_manager, _model_service_manager
     
     if _transcription_manager is not None:
         return _transcription_manager
@@ -78,9 +83,45 @@ def initialize_transcription_manager() -> TranscriptionManager:
     
     # Create transcription manager
     manager = TranscriptionManager()
-    
-    # Initialize local GPU strategy only if needed and available
-    if config_validation["should_load_local_model"]:
+
+    # ------------------------------------------------------------------
+    # Shared ModelService: probe-or-spawn before loading local model
+    # ------------------------------------------------------------------
+    _use_model_service = False
+    if MODEL_SERVICE_ENABLED and DEFAULT_TRANSCRIPTION_METHOD in ("local", "auto"):
+        ms_manager = ModelServiceManager()
+        ms_result = ms_manager.ensure_running()
+        if ms_result.available:
+            # Register ModelServiceTranscriptionStrategy as primary.
+            # It reports itself as "Local GPU (Shared)" in the UI so users
+            # see it as a local GPU mode, not a generic "Network GPU".
+            ms_config = StrategyConfig(
+                name="model_service",
+                enabled=True,
+                priority=1,
+                timeout=30.0,
+                retry_count=0,
+                specific_config={"server_url": ms_result.url},
+            )
+            ms_strategy = ModelServiceTranscriptionStrategy(ms_config)
+            manager.register_strategy(ms_strategy)
+            logger.info(
+                f"Shared ModelService detected at {ms_result.url} — "
+                f"using Local GPU (Shared) strategy, skipping in-process model load"
+            )
+            _model_service_manager = ms_manager
+            _use_model_service = True
+        else:
+            ms_manager.shutdown()  # no-op if nothing was spawned
+    elif MODEL_SERVICE_ENABLED:
+        logger.debug(
+            f"ModelService integration skipped — DEFAULT_TRANSCRIPTION_METHOD is '{DEFAULT_TRANSCRIPTION_METHOD}'"
+        )
+    else:
+        logger.debug("ModelService integration skipped — MODEL_SERVICE_ENABLED=False")
+
+    # Initialize local GPU strategy only if ModelService is not being used
+    if not _use_model_service and config_validation["should_load_local_model"]:
         try:
             local_config = StrategyConfig(
                 name="local_gpu",
@@ -95,6 +136,8 @@ def initialize_transcription_manager() -> TranscriptionManager:
             logger.info("Local GPU transcription strategy registered")
         except Exception as e:
             logger.warning(f"Failed to initialize local GPU strategy: {e}")
+    elif _use_model_service:
+        logger.info("Skipping local GPU strategy initialization — using shared ModelService")
     else:
         logger.info("Skipping local GPU strategy initialization (not needed or dependencies unavailable)")
     
@@ -139,8 +182,15 @@ def initialize_transcription_manager() -> TranscriptionManager:
     # Determine primary strategy based on configuration
     primary_set = False
     fallback_set = False
-    
-    if DEFAULT_TRANSCRIPTION_METHOD == "local" and available_strategies.get("Local GPU (CUDA)", False):
+
+    # If ModelService is active, it was registered as "Local GPU (Shared)" — set it as primary
+    if _use_model_service and available_strategies.get("Local GPU (Shared)", False):
+        manager.set_primary_strategy("Local GPU (Shared)")
+        primary_set = True
+        if available_strategies.get("Groq API", False):
+            manager.set_fallback_strategy("Groq API")
+            fallback_set = True
+    elif DEFAULT_TRANSCRIPTION_METHOD == "local" and available_strategies.get("Local GPU (CUDA)", False):
         manager.set_primary_strategy("Local GPU (CUDA)")
         primary_set = True
         if available_strategies.get("Groq API", False):
@@ -372,12 +422,17 @@ def optimize_transcription_memory():
 
 def cleanup_transcription_system():
     """Cleanup the entire transcription system"""
-    global _transcription_manager, _model_cache
+    global _transcription_manager, _model_cache, _model_service_manager
     
     try:
         if _transcription_manager:
             _transcription_manager.cleanup()
             _transcription_manager = None
+        
+        # Shutdown ModelService subprocess if this process spawned it
+        if _model_service_manager:
+            _model_service_manager.shutdown()
+            _model_service_manager = None
         
         # Clear global model cache
         _model_cache.clear()
