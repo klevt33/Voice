@@ -222,7 +222,7 @@ class ChatPage:
             return False
 
     def start_new_thread(self) -> bool:
-        """Clicks the 'new thread' button and waits for the page to be ready."""
+        """Clicks the 'new thread' button/link and waits for the page to be ready."""
         nav_url = self.config.get("url", "")
         new_thread_selector = self.config.get("new_thread_button_selector")
         input_selector = self.config.get("css_selector_input")
@@ -233,11 +233,13 @@ class ChatPage:
 
         try:
             logger.info("Attempting to start a new thread.")
-            # Use JavaScript to click the element, which can be more reliable
-            new_thread_button = self.wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, new_thread_selector)))
-            self.driver.execute_script("arguments[0].click();", new_thread_button)
+            # Use presence_of_element_located so this works for both <button> and <a> tags
+            new_thread_el = self.wait_long.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, new_thread_selector))
+            )
+            self.driver.execute_script("arguments[0].click();", new_thread_el)
 
-            # Wait for the UI to update, which often includes a URL change and the input field becoming ready.
+            # Wait for the UI to update: input field becomes ready and URL is at base URL.
             self.wait_long.until(
                 lambda d: EC.element_to_be_clickable((By.CSS_SELECTOR, input_selector))(d) and \
                           nav_url.rstrip('/') in d.current_url.rstrip('/')

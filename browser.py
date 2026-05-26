@@ -47,6 +47,12 @@ class BrowserManager:
             c_options = webdriver.ChromeOptions()
             c_options.add_experimental_option("debuggerAddress", DEBUGGER_ADDRESS)
             self.driver = webdriver.Chrome(options=c_options)
+            
+            # Switch to the correct tab (the one matching the configured URL domain).
+            # Chrome's DevTools may report an internal chrome:// page (e.g. omnibox popup)
+            # as the active tab, which would cause all subsequent selector lookups to fail.
+            self._switch_to_target_tab()
+            
             self.chat_page = ChatPage(self.driver, self.chat_config)
             
             # Initialize connection monitor and reconnection manager
@@ -63,6 +69,42 @@ class BrowserManager:
             self.chat_page = None
             self.connection_monitor = None
             return False
+
+    def _switch_to_target_tab(self):
+        """Switch to the tab matching the configured chat URL domain.
+        
+        Chrome's DevTools protocol may attach to an internal chrome:// page
+        (e.g. the omnibox popup overlay) as the 'active' tab. This method
+        iterates all window handles and switches to the first one whose URL
+        matches the expected domain, so all subsequent Selenium operations
+        target the correct page.
+        """
+        from urllib.parse import urlparse
+        target_url = self.chat_config.get("url", "")
+        if not target_url:
+            return
+        
+        target_domain = urlparse(target_url).netloc.replace("www.", "")
+        handles = self.driver.window_handles
+        logger.info(f"Scanning {len(handles)} tab(s) for domain '{target_domain}'...")
+        
+        for handle in handles:
+            try:
+                self.driver.switch_to.window(handle)
+                current_url = self.driver.current_url
+                current_domain = urlparse(current_url).netloc.replace("www.", "")
+                if current_domain == target_domain:
+                    logger.info(f"Switched to target tab: {current_url}")
+                    return
+            except Exception as e:
+                logger.debug(f"Could not read tab {handle}: {e}")
+        
+        # No matching tab found — log a warning but leave the driver on whatever tab it's on.
+        # navigate_to_initial_page will surface a proper warning to the UI.
+        logger.warning(
+            f"No open tab found for domain '{target_domain}'. "
+            f"Please open {target_url} in Chrome."
+        )
 
     def new_chat(self, context_text: Optional[str] = None, force_new_thread_and_init_prompt: bool = False) -> bool:
         """
@@ -468,6 +510,10 @@ class BrowserManager:
             c_options = webdriver.ChromeOptions()
             c_options.add_experimental_option("debuggerAddress", DEBUGGER_ADDRESS)
             self.driver = webdriver.Chrome(options=c_options)
+            
+            # Switch to the correct tab (same logic as start_driver)
+            self._switch_to_target_tab()
+            
             self.chat_page = ChatPage(self.driver, self.chat_config)
             
             # Note: We don't reinitialize connection_monitor and reconnection_manager here

@@ -170,136 +170,150 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
         super().__init__(config)
         self._model = None
         self._device = None
-        self._model_cache = {}
-        self._initialize_model()
-    
-    def _initialize_model(self):
-        """Initialize the faster-whisper model"""
+        # Detect device at construction time (cheap), but don't load the model yet
+        self._detect_device()
+
+    def _detect_device(self):
+        """Detect the target device without loading the model."""
         try:
-            # Check if dependencies are available
+            import torch
+            self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            self._device = "cpu"
+
+    def load_model(self):
+        """Load the faster-whisper model into memory (GPU/CPU). No-op if already loaded."""
+        if self._model is not None:
+            return
+
+        try:
             try:
                 import torch
             except ImportError:
                 raise TranscriptionError("PyTorch not available", self.get_name())
-            
+
             try:
                 from faster_whisper import WhisperModel
             except ImportError:
                 raise TranscriptionError("faster-whisper not available", self.get_name())
-            
+
             from config import WHISPER_MODEL, COMPUTE_TYPE, MODELS_FOLDER
-            
-            # Determine device type - let faster-whisper handle the details
+
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.logger.info(f"Initializing faster-whisper on device: {self._device}")
-            
-            # Create models folder if it doesn't exist
+            self.logger.info(f"Loading faster-whisper model on {self._device}...")
+
             if not os.path.exists(MODELS_FOLDER):
                 os.makedirs(MODELS_FOLDER)
-                self.logger.info(f"Created models folder: {MODELS_FOLDER}")
-            
-            # Create the model - let faster-whisper handle GPU/CPU logic
+
             compute_type = COMPUTE_TYPE if self._device == "cuda" else "int8"
             self._model = WhisperModel(
                 WHISPER_MODEL,
                 device=self._device,
                 compute_type=compute_type,
-                download_root=MODELS_FOLDER
+                download_root=MODELS_FOLDER,
             )
-            
             self.logger.info(f"faster-whisper model loaded successfully on {self._device}")
-            
+
         except Exception as e:
-            self.logger.error(f"Error initializing faster-whisper: {e}")
+            self.logger.error(f"Error loading faster-whisper model: {e}")
             self._record_error(e)
-            raise TranscriptionError(f"Failed to initialize local GPU transcription: {e}", self.get_name(), e)
-    
-    def transcribe(self, audio_segment: AudioSegment) -> TranscriptionResult:
-        """Transcribe audio using local faster-whisper model"""
-        if not self.is_available():
-            raise TranscriptionError("Local GPU transcription not available", self.get_name())
-        
-        start_time = time.time()
-        
+            raise TranscriptionError(f"Failed to load local GPU model: {e}", self.get_name(), e)
+
+    def unload_model(self):
+        """Unload the model and free GPU/CPU memory."""
+        if self._model is None:
+            return
         try:
-            from config import LANGUAGE, BEAM_SIZE
-            
-            # Get audio data as WAV bytes
-            audio_data = audio_segment.get_wav_bytes()
-            if not audio_data:
-                raise TranscriptionError("Could not get WAV data from audio segment", self.get_name())
-            
-            # Transcribe with faster_whisper
-            with io.BytesIO(audio_data) as audio_io:
-                segments, info = self._model.transcribe(
-                    audio_io,
-                    language=LANGUAGE,
-                    beam_size=BEAM_SIZE,
-                    word_timestamps=False
-                )
-                
-                # Process the transcript
-                result_text = process_whisper_segments(segments)
-                if not result_text:
-                    self.logger.info("Filtered out likely hallucination from local GPU transcription")
-            
-            processing_time = time.time() - start_time
-            self._record_success()
-            
-            return TranscriptionResult(
-                text=result_text,
-                method_used="local_gpu",
-                processing_time=processing_time,
-                fallback_used=False
-            )
-            
-        except Exception as e:
-            self._record_error(e)
-            processing_time = time.time() - start_time
-            
-            return TranscriptionResult(
-                text="",
-                method_used="local_gpu",
-                processing_time=processing_time,
-                fallback_used=False,
-                error_message=str(e)
-            )
-    
-    def is_available(self) -> bool:
-        """Check if local transcription is available"""
-        try:
-            # Check if dependencies are available
-            import torch
-            from faster_whisper import WhisperModel
-            # Check if model was successfully initialized
-            return self._model is not None
-        except ImportError:
-            return False
-    
-    def get_name(self) -> str:
-        """Get strategy name"""
-        return f"Local GPU ({self._device.upper()})" if self._device else "Local GPU"
-    
-    def cleanup(self):
-        """Cleanup GPU resources"""
-        try:
-            if self._model:
-                del self._model
-                self._model = None
-            
+            del self._model
+            self._model = None
             if self._device == "cuda":
                 try:
                     import torch
                     import gc
                     gc.collect()
                     torch.cuda.empty_cache()
-                    self.logger.debug("CUDA cache cleared")
+                    self.logger.debug("CUDA cache cleared after model unload")
                 except ImportError:
                     pass
-                
-            self.logger.info("Local GPU transcription resources cleaned up")
+            self.logger.info("faster-whisper model unloaded")
         except Exception as e:
-            self.logger.warning(f"Error during cleanup: {e}")
+            self.logger.warning(f"Error unloading model: {e}")
+    
+    def transcribe(self, audio_segment: AudioSegment) -> TranscriptionResult:
+        """Transcribe audio using local faster-whisper model (loads model on first call)."""
+        start_time = time.time()
+
+        try:
+            # Load model on demand if not already loaded
+            self.load_model()
+        except TranscriptionError as e:
+            return TranscriptionResult(
+                text="",
+                method_used="local_gpu",
+                processing_time=time.time() - start_time,
+                fallback_used=False,
+                error_message=str(e),
+            )
+
+        try:
+            from config import LANGUAGE, BEAM_SIZE
+
+            audio_data = audio_segment.get_wav_bytes()
+            if not audio_data:
+                raise TranscriptionError("Could not get WAV data from audio segment", self.get_name())
+
+            with io.BytesIO(audio_data) as audio_io:
+                segments, info = self._model.transcribe(
+                    audio_io,
+                    language=LANGUAGE,
+                    beam_size=BEAM_SIZE,
+                    word_timestamps=False,
+                )
+                result_text = process_whisper_segments(segments)
+                if not result_text:
+                    self.logger.info("Filtered out likely hallucination from local GPU transcription")
+
+            processing_time = time.time() - start_time
+            self._record_success()
+
+            return TranscriptionResult(
+                text=result_text,
+                method_used="local_gpu",
+                processing_time=processing_time,
+                fallback_used=False,
+            )
+
+        except Exception as e:
+            self._record_error(e)
+            return TranscriptionResult(
+                text="",
+                method_used="local_gpu",
+                processing_time=time.time() - start_time,
+                fallback_used=False,
+                error_message=str(e),
+            )
+
+    def is_available(self) -> bool:
+        """Return True if the dependencies are installed (model need not be loaded yet)."""
+        try:
+            import torch
+            from faster_whisper import WhisperModel
+            return True
+        except ImportError:
+            return False
+
+    def is_model_loaded(self) -> bool:
+        """Return True if the model is currently loaded in memory."""
+        return self._model is not None
+    
+    def get_name(self) -> str:
+        """Get strategy name"""
+        return f"Local GPU ({self._device.upper()})" if self._device else "Local GPU"
+    
+    def cleanup(self):
+        """Cleanup GPU resources."""
+        self.unload_model()
+        self.logger.info("Local GPU transcription resources cleaned up")
 
 
 class GroqAPITranscriptionStrategy(TranscriptionStrategy):
@@ -765,9 +779,27 @@ class TranscriptionManager:
     def _switch_strategy_unsafe(self, new_strategy_name: str) -> bool:
         """Switch strategy without locking (internal use)"""
         old_strategy_name = self._current_strategy_name
-        
+        old_strategy = self._primary_strategy
+
         if self._set_primary_strategy_unsafe(new_strategy_name):
             self.logger.info(f"Switched transcription strategy from {old_strategy_name} to {new_strategy_name}")
+
+            # Unload local GPU model when switching away from it
+            if old_strategy is not None and isinstance(old_strategy, LocalGPUTranscriptionStrategy):
+                if new_strategy_name != old_strategy_name:
+                    self.logger.info("Unloading local GPU model (no longer the active strategy)")
+                    old_strategy.unload_model()
+
+            # Load local GPU model when switching to it
+            new_strategy = self._strategies.get(new_strategy_name)
+            if isinstance(new_strategy, LocalGPUTranscriptionStrategy):
+                self.logger.info("Loading local GPU model (now the active strategy)")
+                try:
+                    new_strategy.load_model()
+                except Exception as e:
+                    self.logger.error(f"Failed to load local GPU model on switch: {e}")
+                    return False
+
             return True
         else:
             self.logger.error(f"Failed to switch to strategy: {new_strategy_name}")

@@ -44,9 +44,9 @@ FALLBACK_RETRY_LIMIT = 3              # Maximum number of fallback attempts befo
 FALLBACK_COOLDOWN_PERIOD = 60.0       # Cooldown period in seconds before retrying failed method
 
 # Network GPU Transcription Configuration
-NETWORK_GPU_SERVER_URL = "http://localhost:8765"  # URL of the network GPU transcription server
+NETWORK_GPU_SERVER_URL = "http://192.168.1.231:8765"  # URL of the network GPU transcription server
 NETWORK_GPU_TIMEOUT = 30.0                        # Timeout for network GPU requests in seconds
-NETWORK_GPU_ENABLED = False                       # Enable network GPU transcription strategy
+NETWORK_GPU_ENABLED = True                       # Enable network GPU transcription strategy
 NETWORK_GPU_API_KEY = None                        # Optional Bearer token; None = auth disabled
 
 # Shared Model Service Configuration
@@ -82,9 +82,9 @@ CHATS = {
         "prompt_msg_file": r"prompts\prompt_msg_interview.txt",
         "css_selector_input": "[id='ask-input']",
         "submit_button_selector": "button[aria-label='Submit']",
-        "attach_files_button_selector": "button[aria-label='Attach files']",
+        "attach_files_button_selector": "button[aria-label='Add files or tools']",
         "file_input_selector_after_attach": "input[type='file']",
-        "new_thread_button_selector": "button[data-testid='sidebar-new-thread']",
+        "new_thread_button_selector": "a[aria-label='New']",
         "chat_response_selector": "[data-testid*='conversation-turn-'] .text-message",
         "generation_error_text": "Something went wrong"
     },

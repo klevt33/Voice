@@ -231,6 +231,17 @@ def initialize_transcription_manager() -> TranscriptionManager:
     logger.info(f"Primary strategy: {manager.get_current_strategy_name()}")
     if fallback_set:
         logger.info("Fallback strategy configured")
+
+    # Load the local GPU model now if it is the active primary strategy.
+    # For all other primary strategies the model stays unloaded until explicitly switched.
+    primary_name = manager.get_current_strategy_name()
+    primary_strategy = manager._strategies.get(primary_name)
+    if isinstance(primary_strategy, LocalGPUTranscriptionStrategy):
+        logger.info("Primary strategy is Local GPU — loading model now")
+        try:
+            primary_strategy.load_model()
+        except Exception as e:
+            raise RuntimeError(f"Failed to load local GPU model: {e}") from e
     
     _transcription_manager = manager
     return manager
