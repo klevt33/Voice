@@ -25,10 +25,25 @@ FRAMES_PER_BUFFER = int(SAMPLE_RATE * SILENCE_DURATION / CHUNK_SIZE)  # Calculat
 
 # Whisper model configuration
 MODELS_FOLDER = "faster_whisper_models"  # Folder to save faster_whisper models
-WHISPER_MODEL = "large-v3"  # Whisper model size (tiny, base, small, medium, large-v1, large-v2)
+WHISPER_MODEL = "turbo"   # Whisper model to use. Options: "turbo" (fast, recommended), "large-v3" (slower, max accuracy)
 COMPUTE_TYPE = "float16"  # Compute type (float16, int8)
 LANGUAGE = "en"        # Set to English only
 BEAM_SIZE = 5          # Beam size for faster-whisper
+
+# Hot words: list of words/phrases to bias transcription toward specific spellings.
+# These are joined with spaces and passed to faster-whisper's hotwords parameter.
+# The model will favour these tokens in its output probability distribution.
+# Set to [] to disable.
+WHISPER_HOTWORDS: list[str] = [
+    "Claude", "Claude Code", "Sonnet", "Opus", "Fable", "Astra",
+]
+
+# Initial prompt: seeds the transcription context window to influence style and formatting.
+# Useful for encouraging proper capitalization and punctuation in output.
+# Set to None or "" to disable.
+WHISPER_INITIAL_PROMPT: str | None = (
+    "The following is a spoken transcript. Use proper capitalization and punctuation."
+)
 
 # API Transcription Configuration
 GROQ_API_KEY_ENV_VAR = "GROQ_API_KEY"  # Environment variable name for Groq API key

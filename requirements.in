@@ -11,8 +11,8 @@
 # Install PyTorch first:
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 # Then install faster-whisper dependencies:
-# faster-whisper
-# ctranslate2
+faster-whisper==1.2.1
+ctranslate2>=4.0,<5
 # sympy==1.13.1  # Pinned by torch==2.5.1+cu121
 
 # FOR API TRANSCRIPTION (optional):

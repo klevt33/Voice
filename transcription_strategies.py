@@ -256,11 +256,18 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
             )
 
         try:
-            from config import LANGUAGE, BEAM_SIZE
+            from config import LANGUAGE, BEAM_SIZE, WHISPER_HOTWORDS, WHISPER_INITIAL_PROMPT
 
             audio_data = audio_segment.get_wav_bytes()
             if not audio_data:
                 raise TranscriptionError("Could not get WAV data from audio segment", self.get_name())
+
+            hotwords_str = " ".join(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else None
+            initial_prompt = WHISPER_INITIAL_PROMPT if WHISPER_INITIAL_PROMPT else None
+            self.logger.debug(
+                f"Transcribing with hotwords={'%d words' % len(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else 'disabled'}, "
+                f"initial_prompt={'set' if initial_prompt else 'disabled'}"
+            )
 
             with io.BytesIO(audio_data) as audio_io:
                 segments, info = self._model.transcribe(
@@ -268,6 +275,8 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                     language=LANGUAGE,
                     beam_size=BEAM_SIZE,
                     word_timestamps=False,
+                    hotwords=hotwords_str,
+                    initial_prompt=initial_prompt,
                 )
                 result_text = process_whisper_segments(segments)
                 if not result_text:

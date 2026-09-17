@@ -72,8 +72,15 @@ def run_transcription(model, audio_bytes: bytes) -> dict:
     Intended to be called from a ThreadPoolExecutor so the asyncio event loop
     is not blocked.  Returns a dict with "text" and "processing_time" keys.
     """
-    from config import LANGUAGE, BEAM_SIZE
+    from config import LANGUAGE, BEAM_SIZE, WHISPER_HOTWORDS, WHISPER_INITIAL_PROMPT
     from transcription_strategies import process_whisper_segments
+
+    hotwords_str = " ".join(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else None
+    initial_prompt = WHISPER_INITIAL_PROMPT if WHISPER_INITIAL_PROMPT else None
+    logger.debug(
+        f"Transcribing with hotwords={'%d words' % len(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else 'disabled'}, "
+        f"initial_prompt={'set' if initial_prompt else 'disabled'}"
+    )
 
     start_time = time.time()
     with io.BytesIO(audio_bytes) as audio_io:
@@ -82,6 +89,8 @@ def run_transcription(model, audio_bytes: bytes) -> dict:
             language=LANGUAGE,
             beam_size=BEAM_SIZE,
             word_timestamps=False,
+            hotwords=hotwords_str,
+            initial_prompt=initial_prompt,
         )
         result_text = process_whisper_segments(segments)
 
