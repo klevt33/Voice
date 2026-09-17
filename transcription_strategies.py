@@ -22,6 +22,7 @@ def apply_hallucination_filter(text: str) -> str:
     Removes text that matches known whisper hallucination patterns:
     - Short phrases containing "thank", "subtitles", or "captions" (≤ 40 chars)
     - Any result of 10 characters or fewer
+    - Text starting with "closed caption" and shorter than 65 chars
 
     Returns the original text if it passes, or "" if filtered.
     """
@@ -30,6 +31,8 @@ def apply_hallucination_filter(text: str) -> str:
         ("thank" in lt or "subtitles" in lt or "captions" in lt)
         and len(text) <= 40
     ) or len(text) <= 10:
+        return ""
+    if lt.startswith("closed caption") and len(text) < 65:
         return ""
     return text
 

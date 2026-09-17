@@ -45,6 +45,29 @@ def test_normal_speech_passes():
     text = "The meeting starts at nine o'clock in the morning."
     assert apply_hallucination_filter(text) == text
 
+def test_closed_caption_short_filtered():
+    assert apply_hallucination_filter("Closed Caption") == ""
+
+def test_closed_caption_mixed_case_filtered():
+    assert apply_hallucination_filter("CLOSED CAPTION by AI") == ""
+
+def test_closed_caption_under_65_filtered():
+    # 64 chars starting with "closed caption"
+    text = "Closed captioning provided by the network" + " " * 23
+    text = text[:64]
+    assert apply_hallucination_filter(text) == ""
+
+def test_closed_caption_65_or_more_passes():
+    # Exactly 65 chars starting with "closed caption" should pass
+    text = ("Closed captioning provided by the network" + "x" * 30)[:65]
+    assert apply_hallucination_filter(text) == text
+
+def test_closed_caption_long_passes():
+    # A long sentence that happens to start with "closed caption"
+    text = "Closed captioning provided by the network for all viewers watching at home today."
+    assert len(text) >= 65
+    assert apply_hallucination_filter(text) == text
+
 
 # ---------------------------------------------------------------------------
 # Property test
