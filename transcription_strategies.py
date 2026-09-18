@@ -15,7 +15,7 @@ from audio_handler import AudioSegment
 logger = logging.getLogger(__name__)
 
 
-def apply_hallucination_filter(text: str) -> str:
+def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> str:
     """
     Filter out likely hallucinations or junk from transcription output.
 
@@ -23,6 +23,8 @@ def apply_hallucination_filter(text: str) -> str:
     - Short phrases containing "thank", "subtitles", or "captions" (≤ 40 chars)
     - Any result of 10 characters or fewer
     - Text starting with "closed caption" and shorter than 65 chars
+    - Text that exactly matches the Whisper initial prompt (Whisper sometimes
+      echoes the prompt verbatim when there is no real speech to transcribe)
 
     Returns the original text if it passes, or "" if filtered.
     """
@@ -34,9 +36,11 @@ def apply_hallucination_filter(text: str) -> str:
         return ""
     if lt.startswith("closed caption") and len(text) < 65:
         return ""
+    if initial_prompt and text.strip() == initial_prompt.strip():
+        return ""
     return text
 
-def process_whisper_segments(segments) -> str:
+def process_whisper_segments(segments, initial_prompt: str | None = None) -> str:
     """
     Join faster-whisper segment objects into a single cleaned, filtered string.
 
@@ -48,7 +52,7 @@ def process_whisper_segments(segments) -> str:
         return ""
     transcript_text = " ".join(seg.text for seg in segment_list)
     cleaned_text = re.sub(r" {2,}", " ", transcript_text.strip())
-    return apply_hallucination_filter(cleaned_text)
+    return apply_hallucination_filter(cleaned_text, initial_prompt)
 
 
 @dataclass
@@ -281,7 +285,7 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                     hotwords=hotwords_str,
                     initial_prompt=initial_prompt,
                 )
-                result_text = process_whisper_segments(segments)
+                result_text = process_whisper_segments(segments, initial_prompt)
                 if not result_text:
                     self.logger.info("Filtered out likely hallucination from local GPU transcription")
 
@@ -489,7 +493,8 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
         if result_text:
             # Replace multiple consecutive spaces with a single space
             result_text = re.sub(r' {2,}', ' ', result_text)
-            filtered = apply_hallucination_filter(result_text)
+            from config import WHISPER_INITIAL_PROMPT
+            filtered = apply_hallucination_filter(result_text, WHISPER_INITIAL_PROMPT)
             if not filtered:
                 self.logger.info(f"Filtered out likely hallucination: {result_text}")
             result_text = filtered

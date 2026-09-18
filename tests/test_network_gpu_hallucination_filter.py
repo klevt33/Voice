@@ -13,6 +13,8 @@ import hypothesis.strategies as st
 
 from transcription_strategies import apply_hallucination_filter
 
+SAMPLE_PROMPT = "The following is a spoken transcript. Use proper capitalization and punctuation."
+
 
 # ---------------------------------------------------------------------------
 # Known-value unit tests
@@ -67,6 +69,34 @@ def test_closed_caption_long_passes():
     text = "Closed captioning provided by the network for all viewers watching at home today."
     assert len(text) >= 65
     assert apply_hallucination_filter(text) == text
+
+# ---------------------------------------------------------------------------
+# Initial prompt echo filter
+# ---------------------------------------------------------------------------
+
+def test_exact_prompt_match_filtered():
+    assert apply_hallucination_filter(SAMPLE_PROMPT, SAMPLE_PROMPT) == ""
+
+def test_prompt_match_with_surrounding_whitespace_filtered():
+    # Strip is applied on both sides, so leading/trailing whitespace should not matter
+    assert apply_hallucination_filter("  " + SAMPLE_PROMPT + "  ", SAMPLE_PROMPT) == ""
+
+def test_prompt_match_no_prompt_arg_passes():
+    # Without the prompt argument the echo should NOT be filtered
+    assert apply_hallucination_filter(SAMPLE_PROMPT) == SAMPLE_PROMPT
+
+def test_prompt_none_passes():
+    # Explicit None prompt disables the check
+    assert apply_hallucination_filter(SAMPLE_PROMPT, None) == SAMPLE_PROMPT
+
+def test_partial_prompt_not_filtered():
+    # A partial match is real speech, not an echo
+    partial = SAMPLE_PROMPT[:40]
+    assert apply_hallucination_filter(partial, SAMPLE_PROMPT) == partial
+
+def test_different_text_not_filtered_by_prompt():
+    text = "This is genuine transcribed speech from the meeting."
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == text
 
 
 # ---------------------------------------------------------------------------
