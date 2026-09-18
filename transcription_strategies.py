@@ -24,8 +24,9 @@ def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> 
     - Any result of 10 characters or fewer
     - Text starting with "closed caption" and shorter than 65 chars
     - Text starting with "for more information visit" (after lowercasing and stripping punctuation)
-    - Text that exactly matches the Whisper initial prompt (Whisper sometimes
-      echoes the prompt verbatim when there is no real speech to transcribe)
+    - Text that matches any word-boundary prefix of the Whisper initial prompt
+      that is at least 4 words long (case-insensitive). Covers both full-prompt
+      echoes and partial echoes of the opening sentence.
 
     Returns the original text if it passes, or "" if filtered.
     """
@@ -39,8 +40,19 @@ def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> 
         return ""
     if re.sub(r"[^\w\s]", "", lt).startswith("for more information visit"):
         return ""
-    if initial_prompt and text.strip() == initial_prompt.strip():
-        return ""
+    if initial_prompt:
+        # Filter any word-boundary prefix of the initial prompt that is at
+        # least 4 words long.  Whisper sometimes echoes only the opening
+        # sentence (or a few words) of the prompt rather than the full text.
+        # Comparison is case-insensitive so capitalisation differences don't
+        # matter.  The 4-word minimum avoids accidentally blocking real speech
+        # that happens to open with the same short phrase.
+        prompt_words = initial_prompt.split()
+        text_stripped_lower = text.strip().casefold()
+        for n in range(4, len(prompt_words) + 1):
+            prefix = " ".join(prompt_words[:n]).casefold()
+            if text_stripped_lower == prefix:
+                return ""
     return text
 
 def process_whisper_segments(segments, initial_prompt: str | None = None) -> str:

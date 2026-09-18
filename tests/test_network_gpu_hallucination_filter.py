@@ -100,7 +100,7 @@ def test_exact_prompt_match_filtered():
     assert apply_hallucination_filter(SAMPLE_PROMPT, SAMPLE_PROMPT) == ""
 
 def test_prompt_match_with_surrounding_whitespace_filtered():
-    # Strip is applied on both sides, so leading/trailing whitespace should not matter
+    # Leading/trailing whitespace on the transcription is stripped before comparison
     assert apply_hallucination_filter("  " + SAMPLE_PROMPT + "  ", SAMPLE_PROMPT) == ""
 
 def test_prompt_match_no_prompt_arg_passes():
@@ -111,10 +111,25 @@ def test_prompt_none_passes():
     # Explicit None prompt disables the check
     assert apply_hallucination_filter(SAMPLE_PROMPT, None) == SAMPLE_PROMPT
 
-def test_partial_prompt_not_filtered():
-    # A partial match is real speech, not an echo
-    partial = SAMPLE_PROMPT[:40]
-    assert apply_hallucination_filter(partial, SAMPLE_PROMPT) == partial
+def test_partial_prompt_first_sentence_filtered():
+    # Whisper sometimes echoes only the opening sentence of the prompt
+    first_sentence = "The following is a spoken transcript."
+    assert apply_hallucination_filter(first_sentence, SAMPLE_PROMPT) == ""
+
+def test_partial_prompt_case_insensitive_filtered():
+    # Capitalisation in the echo should not matter
+    echo = "the following is a spoken transcript."
+    assert apply_hallucination_filter(echo, SAMPLE_PROMPT) == ""
+
+def test_partial_prompt_4_words_filtered():
+    # Exactly 4 words — at the minimum threshold, should be filtered
+    four_words = " ".join(SAMPLE_PROMPT.split()[:4])
+    assert apply_hallucination_filter(four_words, SAMPLE_PROMPT) == ""
+
+def test_partial_prompt_3_words_passes():
+    # 3 words is below the threshold — should NOT be filtered
+    three_words = " ".join(SAMPLE_PROMPT.split()[:3])
+    assert apply_hallucination_filter(three_words, SAMPLE_PROMPT) == three_words
 
 def test_different_text_not_filtered_by_prompt():
     text = "This is genuine transcribed speech from the meeting."
