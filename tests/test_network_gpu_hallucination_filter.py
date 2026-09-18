@@ -71,6 +71,28 @@ def test_closed_caption_long_passes():
     assert apply_hallucination_filter(text) == text
 
 # ---------------------------------------------------------------------------
+# "for more information visit" filter
+# ---------------------------------------------------------------------------
+
+def test_for_more_information_visit_basic_filtered():
+    assert apply_hallucination_filter("For more information visit www.example.com") == ""
+
+def test_for_more_information_visit_with_comma_filtered():
+    # Comma between "information" and "visit" should be stripped away
+    assert apply_hallucination_filter("For more information, visit www.fema.gov.au") == ""
+
+def test_for_more_information_visit_uppercase_filtered():
+    assert apply_hallucination_filter("FOR MORE INFORMATION VISIT OUR WEBSITE") == ""
+
+def test_for_more_information_visit_mixed_punctuation_filtered():
+    assert apply_hallucination_filter("For more information, visit: www.site.org") == ""
+
+def test_for_more_information_does_not_filter_without_visit():
+    # "for more information" alone, without "visit", should pass
+    text = "For more information on this topic, please read the attached document carefully."
+    assert apply_hallucination_filter(text) == text
+
+# ---------------------------------------------------------------------------
 # Initial prompt echo filter
 # ---------------------------------------------------------------------------
 

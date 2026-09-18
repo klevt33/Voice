@@ -23,6 +23,7 @@ def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> 
     - Short phrases containing "thank", "subtitles", or "captions" (≤ 40 chars)
     - Any result of 10 characters or fewer
     - Text starting with "closed caption" and shorter than 65 chars
+    - Text starting with "for more information visit" (after lowercasing and stripping punctuation)
     - Text that exactly matches the Whisper initial prompt (Whisper sometimes
       echoes the prompt verbatim when there is no real speech to transcribe)
 
@@ -35,6 +36,8 @@ def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> 
     ) or len(text) <= 10:
         return ""
     if lt.startswith("closed caption") and len(text) < 65:
+        return ""
+    if re.sub(r"[^\w\s]", "", lt).startswith("for more information visit"):
         return ""
     if initial_prompt and text.strip() == initial_prompt.strip():
         return ""
