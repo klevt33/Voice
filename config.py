@@ -35,7 +35,7 @@ BEAM_SIZE = 5          # Beam size for faster-whisper
 # The model will favour these tokens in its output probability distribution.
 # Set to [] to disable.
 WHISPER_HOTWORDS: list[str] = [
-    "Claude", "Claude Code", "Sonnet", "Opus", "Fable", "Astra", "Kirill", "Renee", "Logesh", "Sumit", "Pooja", "Vishal"
+    "Claude", "Claude Code", "Sonnet", "Opus", "Fable", "Astra", "Kirill", "Renee", "Logesh", "Sumit", "Pooja", "Vishal", "model-driven"
 ]
 
 # Initial prompt: seeds the transcription context window to influence style and formatting.
