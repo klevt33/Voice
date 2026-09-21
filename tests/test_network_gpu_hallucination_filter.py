@@ -11,7 +11,7 @@ GroqAPITranscriptionStrategy, and transcription_server.py.
 from hypothesis import given, settings
 import hypothesis.strategies as st
 
-from transcription_strategies import apply_hallucination_filter
+from transcription_strategies import apply_hallucination_filter, process_whisper_segments
 
 SAMPLE_PROMPT = "The following is a spoken transcript. Use proper capitalization and punctuation."
 
@@ -68,6 +68,28 @@ def test_closed_caption_long_passes():
     # A long sentence that happens to start with "closed caption"
     text = "Closed captioning provided by the network for all viewers watching at home today."
     assert len(text) >= 65
+    assert apply_hallucination_filter(text) == text
+
+# ---------------------------------------------------------------------------
+# "transcription by" filter
+# ---------------------------------------------------------------------------
+
+def test_transcription_by_filtered():
+    assert apply_hallucination_filter("Transcription by ESO. Translation by —") == ""
+
+def test_transcription_by_lowercase_filtered():
+    assert apply_hallucination_filter("transcription by someone") == ""
+
+def test_transcription_by_uppercase_filtered():
+    assert apply_hallucination_filter("TRANSCRIPTION BY AI") == ""
+
+def test_transcription_by_only_filtered():
+    # Even the bare two-word phrase should be filtered
+    assert apply_hallucination_filter("Transcription by") == ""
+
+def test_word_transcription_not_at_start_passes():
+    # "transcription by" appearing mid-sentence is real speech
+    text = "The transcription by the service was accurate and complete today."
     assert apply_hallucination_filter(text) == text
 
 # ---------------------------------------------------------------------------
@@ -134,6 +156,39 @@ def test_partial_prompt_3_words_passes():
 def test_different_text_not_filtered_by_prompt():
     text = "This is genuine transcribed speech from the meeting."
     assert apply_hallucination_filter(text, SAMPLE_PROMPT) == text
+
+
+# ---------------------------------------------------------------------------
+# process_whisper_segments forwards initial_prompt to the filter
+# (regression test for whisper_server_base.py bug where initial_prompt
+#  was computed but not passed to process_whisper_segments)
+# ---------------------------------------------------------------------------
+
+class _FakeSegment:
+    """Minimal stand-in for a faster-whisper segment object."""
+    def __init__(self, text):
+        self.text = text
+
+def test_process_whisper_segments_filters_prompt_echo():
+    # Simulate Whisper echoing the full initial prompt as a single segment
+    segments = [_FakeSegment(SAMPLE_PROMPT)]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == ""
+
+def test_process_whisper_segments_filters_partial_prompt_echo():
+    # Simulate Whisper echoing only the first sentence of the prompt
+    first_sentence = "The following is a spoken transcript."
+    segments = [_FakeSegment(first_sentence)]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == ""
+
+def test_process_whisper_segments_no_prompt_does_not_filter_echo():
+    # Without initial_prompt, the echo should pass through unchanged
+    segments = [_FakeSegment(SAMPLE_PROMPT)]
+    assert process_whisper_segments(segments) == SAMPLE_PROMPT
+
+def test_process_whisper_segments_passes_real_speech():
+    text = "The quarterly results exceeded all analyst expectations."
+    segments = [_FakeSegment(text)]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == text
 
 
 # ---------------------------------------------------------------------------
