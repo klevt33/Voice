@@ -92,7 +92,7 @@ def run_transcription(model, audio_bytes: bytes) -> dict:
             hotwords=hotwords_str,
             initial_prompt=initial_prompt,
         )
-        result_text = process_whisper_segments(segments)
+        result_text = process_whisper_segments(segments, initial_prompt)
 
     processing_time = time.time() - start_time
     logger.info(
