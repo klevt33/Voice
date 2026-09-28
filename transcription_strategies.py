@@ -1,7 +1,8 @@
 # transcription_strategies.py
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from difflib import SequenceMatcher
+from typing import Dict, Any, List, Optional, Tuple
 import logging
 import os
 import time
@@ -14,23 +15,177 @@ from audio_handler import AudioSegment
 # Configure logger for this module
 logger = logging.getLogger(__name__)
 
+# Minimum number of echoed words required before a stretch of text is treated as
+# an echo of the Whisper initial prompt.  Three words or fewer are far too easy
+# to hit by accident with genuine speech.
+MIN_ECHO_WORDS = 4
 
-def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> str:
+# Number of echoed words after which a *partial* echo is trusted enough to strip
+# from the front of an otherwise real utterance.  If fewer words echo, the
+# overlap is assumed to be coincidental and the text is left untouched.
+MIN_STRONG_ECHO_WORDS = 6
+
+# Similarity ratio (0-1) required for two prompt-echo words to count as the same
+# word.  This absorbs near-misses such as "capitalization" vs "capitalisation".
+ECHO_WORD_SIMILARITY = 0.85
+
+# How many near-miss words are tolerated inside a single echo run.  More than one
+# means the text has genuinely diverged from the prompt.
+MAX_ECHO_NEAR_MISSES = 1
+
+# Minimum length for a truncated final word (e.g. prompt "...punctuation." echoed
+# as "...punctua") to still count as an echo of that prompt word.
+MIN_TRUNCATED_WORD_LEN = 3
+
+# Whitespace and punctuation left dangling at the front of a text once a leading
+# prompt echo has been cut off.
+_LEADING_NOISE = " \t\r\n.,;:!?-–—\"'()[]…"
+
+# Whole-text junk prefixes, matched case-insensitively after punctuation removal.
+JUNK_TEXT_PREFIXES = (
+    "for more information visit",
+    "amaraorg",
+    "amara org",
+)
+
+# Bracketed sound markers Whisper emits on silence, e.g. "[MUSIC]" or "(applause)".
+_SOUND_MARKER_RE = re.compile(r"^[\[\(\*]{1,2}\s*[^)\]\n]{1,40}\s*[\]\)\*]{1,2}[.!?]?$")
+_MUSIC_NOTE_RE = re.compile(r"^[\s\u2669\u266a\u266b\u266c]+$")
+_SOUND_MARKER_WORDS = (
+    "music",
+    "applause",
+    "laughter",
+    "laughing",
+    "laugh",
+    "silence",
+    "inaudible",
+    "sound",
+    "noise",
+    "upbeat",
+    "background",
+)
+
+
+def _normalize_words(text: str) -> List[Tuple[str, int]]:
     """
-    Filter out likely hallucinations or junk from transcription output.
+    Split text into (word, end_offset) pairs, case-folded and free of punctuation.
 
-    Removes text that matches known whisper hallucination patterns:
-    - Short phrases containing "thank", "subtitles", or "captions" (≤ 40 chars)
-    - Any result of 10 characters or fewer
-    - Text starting with "closed caption" and shorter than 65 chars
-    - Text starting with "transcription by" (case-insensitive)
-    - Text starting with "for more information visit" (after lowercasing and stripping punctuation)
-    - Text that matches any word-boundary prefix of the Whisper initial prompt
-      that is at least 4 words long (case-insensitive). Covers both full-prompt
-      echoes and partial echoes of the opening sentence.
+    Working on words instead of raw substrings is what makes the prompt-echo
+    check robust: Whisper re-punctuates, re-capitalises and re-spaces the prompt
+    echo, so the characters rarely match the prompt exactly.
 
-    Returns the original text if it passes, or "" if filtered.
+    Offsets index into the *original* string so the caller can slice the text
+    at an exact word boundary.
     """
+    return [(m.group(0).casefold(), m.end()) for m in re.finditer(r"\w+", text)]
+
+
+def _words_match(a: str, b: str) -> bool:
+    """True if two words are the same for echo-detection purposes."""
+    if a == b:
+        return True
+    if len(a) < 4 or len(b) < 4:
+        return False
+    return SequenceMatcher(None, a, b).ratio() >= ECHO_WORD_SIMILARITY
+
+
+def _is_truncated_word(text_word: str, prompt_word: str) -> bool:
+    """True if one word is a truncated form of the other (>= 3 chars)."""
+    if len(text_word) < MIN_TRUNCATED_WORD_LEN or len(prompt_word) < MIN_TRUNCATED_WORD_LEN:
+        return False
+    return text_word.startswith(prompt_word) or prompt_word.startswith(text_word)
+
+
+def _echo_word_count(text_words: List[str], prompt_words: List[str]) -> int:
+    """
+    Count how many leading words of `text_words` echo the start of `prompt_words`.
+
+    Matching tolerates:
+    - case and punctuation differences (already normalised away),
+    - a truncated final word (Whisper cut off mid-word),
+    - up to MAX_ECHO_NEAR_MISSES near-miss words (e.g. spelling variants).
+    """
+    count = 0
+    near_misses = 0
+    for i in range(min(len(text_words), len(prompt_words))):
+        text_word, prompt_word = text_words[i], prompt_words[i]
+        if text_word == prompt_word:
+            count += 1
+            continue
+        # A cut-off last word still means the model was echoing the prompt.
+        if i == len(text_words) - 1 and _is_truncated_word(text_word, prompt_word):
+            count += 1
+            continue
+        if near_misses < MAX_ECHO_NEAR_MISSES and _words_match(text_word, prompt_word):
+            near_misses += 1
+            count += 1
+            continue
+        break
+    return count
+
+
+def _is_prompt_fragment(text_words: List[str], prompt_words: List[str]) -> bool:
+    """
+    True if *every* word of the text comes from the initial prompt, in order.
+
+    Whisper sometimes echoes only the tail of the prompt ("Use proper
+    capitalization and punctuation.") as a segment of its own, which no
+    prefix-based check can see.  Requiring every word to be a prompt word, in
+    the same relative order, keeps real speech out: ordinary speech introduces
+    words the prompt does not contain.
+    """
+    if len(text_words) < MIN_ECHO_WORDS or not prompt_words:
+        return False
+    position = 0
+    for word in text_words:
+        while position < len(prompt_words) and prompt_words[position] != word:
+            position += 1
+        if position == len(prompt_words):
+            return False
+        position += 1
+    return True
+
+
+def _strip_leading_prompt_echo(
+    text: str, prompt_words: List[str], strong_echo_words: int
+) -> Tuple[str, int]:
+    """
+    Remove a leading echo of the Whisper initial prompt from `text`.
+
+    Returns (text_with_echo_removed, number_of_echoed_words).  When the whole
+    utterance is an echo, the remainder is empty and the caller filters it out.
+    A weak echo (fewer than `strong_echo_words` words) leaves the text unchanged
+    so genuine speech is never truncated on a weak coincidence.
+    """
+    if not text or not prompt_words:
+        return text, 0
+    normalized = _normalize_words(text)
+    if len(normalized) < MIN_ECHO_WORDS:
+        return text, 0
+    echo_words = _echo_word_count([w for w, _ in normalized], prompt_words)
+    if echo_words < MIN_ECHO_WORDS:
+        return text, 0
+    remainder = text[normalized[echo_words - 1][1]:].lstrip(_LEADING_NOISE)
+    if not remainder:
+        return "", echo_words
+    if echo_words < strong_echo_words:
+        return text, 0
+    return remainder, echo_words
+
+
+def _is_sound_marker(text: str) -> bool:
+    """True for bracketed non-speech markers such as "[MUSIC]" or "(applause)"."""
+    stripped = text.strip()
+    if _MUSIC_NOTE_RE.match(stripped):
+        return True
+    if not _SOUND_MARKER_RE.match(stripped):
+        return False
+    lt = stripped.casefold()
+    return any(word in lt for word in _SOUND_MARKER_WORDS)
+
+
+def _apply_text_junk_filter(text: str) -> str:
+    """Apply the length- and phrase-based junk rules. Returns "" when filtered."""
     lt = text.casefold()
     if (
         ("thank" in lt or "subtitles" in lt or "captions" in lt)
@@ -41,34 +196,103 @@ def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> 
         return ""
     if lt.startswith("transcription by"):
         return ""
-    if re.sub(r"[^\w\s]", "", lt).startswith("for more information visit"):
+    unpunctuated = re.sub(r"[^\w\s]", "", lt)
+    if any(unpunctuated.startswith(prefix) for prefix in JUNK_TEXT_PREFIXES):
         return ""
-    if initial_prompt:
-        # Filter any word-boundary prefix of the initial prompt that is at
-        # least 4 words long.  Whisper sometimes echoes only the opening
-        # sentence (or a few words) of the prompt rather than the full text.
-        # Comparison is case-insensitive so capitalisation differences don't
-        # matter.  The 4-word minimum avoids accidentally blocking real speech
-        # that happens to open with the same short phrase.
-        prompt_words = initial_prompt.split()
-        text_stripped_lower = text.strip().casefold()
-        for n in range(4, len(prompt_words) + 1):
-            prefix = " ".join(prompt_words[:n]).casefold()
-            if text_stripped_lower == prefix:
-                return ""
+    if _is_sound_marker(text):
+        return ""
     return text
+
+
+def _prompt_echo_config(initial_prompt: str | None) -> Tuple[List[str], int]:
+    """
+    Pre-compute the normalised prompt words and the strong-echo threshold.
+
+    The threshold is capped by the prompt length so a short custom prompt still
+    gets the prefix-stripping behaviour instead of being permanently unstrippable.
+    """
+    prompt_words = [word for word, _ in _normalize_words(initial_prompt or "")]
+    return prompt_words, min(MIN_STRONG_ECHO_WORDS, len(prompt_words))
+
+
+def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> str:
+    """
+    Filter out likely hallucinations or junk from transcription output.
+
+    Removes text that matches known whisper hallucination patterns:
+    - Short phrases containing "thank", "subtitles", or "captions" (≤ 40 chars)
+    - Any result of 10 characters or fewer
+    - Text starting with "closed caption" and shorter than 65 chars
+    - Text starting with "transcription by" (case-insensitive)
+    - Text starting with "for more information visit" or "amara.org" (after
+      lowercasing and stripping punctuation)
+    - Bracketed sound markers such as "[MUSIC]" or "(applause)"
+    - Any leading echo of the Whisper initial prompt that is at least
+      MIN_ECHO_WORDS words long.  Comparison is word-based, so it survives
+      re-capitalisation, re-punctuation, missing spaces, a truncated final word
+      and near-miss spellings.  An echo covering the whole utterance is dropped;
+      a strong echo followed by real speech has the echo stripped and the real
+      speech is re-checked by the remaining rules.
+
+    Returns the original text if it passes, or "" if filtered.
+    """
+    prompt_words, strong_echo_words = _prompt_echo_config(initial_prompt)
+
+    if prompt_words:
+        if not text:
+            return ""
+        while text:
+            remainder, echo_words = _strip_leading_prompt_echo(
+                text, prompt_words, strong_echo_words
+            )
+            if not echo_words:
+                break
+            if not remainder:
+                # The entire utterance was the prompt echo.
+                return ""
+            text = remainder
+        # A prompt echo that is not a prefix of the prompt (Whisper echoing only
+        # its tail) is caught here, but only when nothing else was said.
+        if _is_prompt_fragment([w for w, _ in _normalize_words(text)], prompt_words):
+            return ""
+
+    return _apply_text_junk_filter(text)
+
 
 def process_whisper_segments(segments, initial_prompt: str | None = None) -> str:
     """
     Join faster-whisper segment objects into a single cleaned, filtered string.
 
-    Combines all segment texts, collapses extra whitespace, and applies the
-    hallucination filter.  Returns an empty string for empty/filtered results.
+    Echoed prompt segments are dropped individually before joining, so a prompt
+    echo that Whisper emitted as its own segment does not poison the joined text
+    that the whole-utterance rules below run against.  Segment texts are then
+    joined, extra whitespace is collapsed, and the hallucination filter is
+    applied.  Returns an empty string for empty/filtered results.
     """
     segment_list = list(segments)
     if not segment_list:
         return ""
-    transcript_text = " ".join(seg.text for seg in segment_list)
+    prompt_words, strong_echo_words = _prompt_echo_config(initial_prompt)
+    kept: List[str] = []
+    for segment in segment_list:
+        segment_text = segment.text or ""
+        if prompt_words:
+            remainder, echo_words = _strip_leading_prompt_echo(
+                segment_text, prompt_words, strong_echo_words
+            )
+            if echo_words:
+                if not remainder:
+                    # The segment was nothing but the prompt echo.
+                    continue
+                segment_text = remainder
+            elif _is_prompt_fragment(
+                [w for w, _ in _normalize_words(segment_text)], prompt_words
+            ):
+                # The segment echoes part of the prompt that is not a prefix of
+                # it, so the prefix-based strip cannot see it.
+                continue
+        kept.append(segment_text)
+    transcript_text = " ".join(kept)
     cleaned_text = re.sub(r" {2,}", " ", transcript_text.strip())
     return apply_hallucination_filter(cleaned_text, initial_prompt)
 

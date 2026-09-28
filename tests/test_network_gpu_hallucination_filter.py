@@ -159,6 +159,124 @@ def test_different_text_not_filtered_by_prompt():
 
 
 # ---------------------------------------------------------------------------
+# Prompt echo variants that used to leak through the filter.
+#
+# The previous implementation compared the transcription against raw prompt
+# substrings with plain string equality, so any echo that differed from the
+# prompt by a single character — a missing final full stop, a dropped space,
+# a British spelling — passed the filter untouched.
+# ---------------------------------------------------------------------------
+
+def test_echo_without_trailing_period_filtered():
+    # Whisper frequently drops the prompt's final full stop.
+    text = "The following is a spoken transcript. Use proper capitalization and punctuation"
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_first_sentence_without_period_filtered():
+    text = "The following is a spoken transcript"
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_with_shouty_capitalisation_filtered():
+    text = SAMPLE_PROMPT.upper()
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_without_space_after_sentence_stop_filtered():
+    # Segments joined without a leading space produce "transcript.Use ...".
+    text = "The following is a spoken transcript.Use proper capitalization and punctuation"
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_with_near_miss_spelling_filtered():
+    # "capitalisation" vs "capitalization" must not defeat the check.
+    text = "The following is a spoken transcript. Use proper capitalisation and punctuation."
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_truncated_mid_word_filtered():
+    # Whisper cut the last word off mid-way.
+    text = "The following is a spoken transcript. Use proper capitalization and punctua"
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_with_extra_inner_whitespace_filtered():
+    text = "The  following   is a spoken transcript.  Use proper capitalization and punctuation."
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_prompt_tail_echo_filtered():
+    # Whisper can echo only the second half of the prompt, which is not a prefix.
+    text = "Use proper capitalization and punctuation."
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+
+# ---------------------------------------------------------------------------
+# Prompt echo followed by real speech: the echo is stripped, the speech kept.
+# ---------------------------------------------------------------------------
+
+def test_echo_then_thanks_fully_filtered():
+    text = (
+        "The following is a spoken transcript. Use proper capitalization "
+        "and punctuation. Thank you."
+    )
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_echo_then_speech_keeps_only_speech():
+    text = (
+        "The following is a spoken transcript. Use proper capitalization "
+        "and punctuation. And then we talked about the roadmap in detail."
+    )
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == (
+        "And then we talked about the roadmap in detail."
+    )
+
+def test_echo_then_speech_keeps_only_speech_without_spaces():
+    text = (
+        "The following is a spoken transcript.Use proper capitalization "
+        "and punctuation. And then we talked about the roadmap in detail."
+    )
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == (
+        "And then we talked about the roadmap in detail."
+    )
+
+def test_repeated_echo_fully_filtered():
+    text = (
+        "The following is a spoken transcript. "
+        "The following is a spoken transcript. Use proper capitalization and punctuation."
+    )
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == ""
+
+def test_weak_echo_does_not_truncate_real_speech():
+    # Only 3 echoed words followed by real speech: too weak to strip, and the
+    # text must be returned untouched rather than half-deleted.
+    text = "The following is a plan for the quarter and it should be reviewed."
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == text
+
+def test_real_speech_mentioning_prompt_words_not_stripped():
+    # Uses prompt vocabulary but diverges after two words — genuine speech.
+    text = "The following roadmap items are all dependent on the migration finishing first."
+    assert apply_hallucination_filter(text, SAMPLE_PROMPT) == text
+
+def test_prompt_echo_check_disabled_without_prompt():
+    # Everything above is prompt-relative; without the prompt nothing is echoed.
+    text = "The following is a spoken transcript. Use proper capitalization and punctuation."
+    assert apply_hallucination_filter(text) == text
+    assert apply_hallucination_filter(text, None) == text
+
+def test_prompt_echo_check_disabled_for_empty_prompt():
+    text = "The following is a spoken transcript. Use proper capitalization and punctuation."
+    assert apply_hallucination_filter(text, "") == text
+
+
+# ---------------------------------------------------------------------------
+# Additional junk patterns
+# ---------------------------------------------------------------------------
+
+def test_sound_marker_filtered():
+    assert apply_hallucination_filter("[MUSIC]") == ""
+    assert apply_hallucination_filter("(applause)") == ""
+    assert apply_hallucination_filter("\u266a\u266a") == ""
+
+def test_amara_org_filtered():
+    assert apply_hallucination_filter("Subtitles by the Amara.org community") == ""
+
+
+# ---------------------------------------------------------------------------
 # process_whisper_segments forwards initial_prompt to the filter
 # (regression test for whisper_server_base.py bug where initial_prompt
 #  was computed but not passed to process_whisper_segments)
@@ -190,6 +308,42 @@ def test_process_whisper_segments_passes_real_speech():
     segments = [_FakeSegment(text)]
     assert process_whisper_segments(segments, SAMPLE_PROMPT) == text
 
+def test_process_whisper_segments_drops_echo_segment():
+    # Whisper emitted the echo as its own segment, then real speech.
+    segments = [
+        _FakeSegment(" The following is a spoken transcript."),
+        _FakeSegment(" And then we talked about the roadmap."),
+    ]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == (
+        "And then we talked about the roadmap."
+    )
+
+def test_process_whisper_segments_drops_prompt_tail_fragment_segment():
+    # The middle segment echoes the tail of the prompt, so it is not a prefix
+    # and can only be recognised as a whole prompt fragment.
+    segments = [
+        _FakeSegment(" The following is a spoken transcript."),
+        _FakeSegment(" Use proper capitalization and punctuation."),
+        _FakeSegment(" And then we talked about pricing."),
+    ]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == (
+        "And then we talked about pricing."
+    )
+
+def test_process_whisper_segments_keeps_short_real_segments():
+    # Segment-level filtering must not swallow short genuine speech.
+    segments = [_FakeSegment(" Okay."), _FakeSegment(" Sure, let's start with pricing.")]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == (
+        "Okay. Sure, let's start with pricing."
+    )
+
+def test_process_whisper_segments_handles_empty_segment_text():
+    segments = [_FakeSegment(""), _FakeSegment("   ")]
+    assert process_whisper_segments(segments, SAMPLE_PROMPT) == ""
+
+def test_process_whisper_segments_empty_input():
+    assert process_whisper_segments([], SAMPLE_PROMPT) == ""
+
 
 # ---------------------------------------------------------------------------
 # Property test
@@ -202,3 +356,20 @@ def test_filter_never_raises(text: str):
     result = apply_hallucination_filter(text)
     assert isinstance(result, str)
     assert result == "" or result == text
+
+@given(st.text())
+@settings(max_examples=200)
+def test_filter_with_prompt_returns_text_or_empty(text: str):
+    """With a prompt, the filter either drops everything or only cuts a leading echo."""
+    result = apply_hallucination_filter(text, SAMPLE_PROMPT)
+    assert isinstance(result, str)
+    # Stripping a prompt echo can only remove a leading chunk, so whatever
+    # survives must still be a slice of the original text.
+    assert result == "" or result in text
+
+@given(st.text())
+@settings(max_examples=200)
+def test_process_whisper_segments_never_raises(text: str):
+    """process_whisper_segments must never raise, whatever a segment contains."""
+    result = process_whisper_segments([_FakeSegment(text)], SAMPLE_PROMPT)
+    assert isinstance(result, str)
