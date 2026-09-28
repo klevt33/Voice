@@ -1,0 +1,14 @@
+# Test-only dependencies.
+#
+# These are intentionally not in requirements.in / requirements.txt, which
+# describe the high-level application dependencies for running the app.
+# Install them alongside the app requirements to run the test suite:
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+#
+pytest
+# Required by pytest.ini. Without it the "timeout" setting is an unknown ini
+# key and tests that block on a worker thread can hang the run forever.
+pytest-timeout
+# Used by the property tests in tests/test_network_gpu_hallucination_filter.py
+hypothesis
