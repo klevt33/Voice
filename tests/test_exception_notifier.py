@@ -102,9 +102,14 @@ class TestExceptionNotifier(unittest.TestCase):
         # Send same exception again
         self.notifier.notify_exception("test_source", exception, "error", "Test message")
         
-        # Should have two separate exceptions
+        # Active exceptions are keyed by "source:user_message"
+        # (ExceptionNotification.get_message_hash), so once the dedup window has
+        # passed the repeat replaces the stale entry instead of adding a second
+        # one.  What matters is that it is treated as a fresh occurrence.
         active = self.notifier.get_active_exceptions()
-        self.assertEqual(len(active), 2)
+        self.assertEqual(len(active), 1)
+        for notification in active.values():
+            self.assertEqual(notification.count, 1)
     
     def test_clear_exception_status(self):
         """Test clearing exception status for recovery."""

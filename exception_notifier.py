@@ -22,12 +22,27 @@ class ExceptionNotification:
     exception: Exception     # Original exception object
     severity: ExceptionSeverity  # Severity level
     user_message: str       # User-friendly message
-    timestamp: datetime     # When the exception occurred
+    timestamp: datetime     # When the exception most recently occurred
     count: int = 1          # Number of similar exceptions
+    first_seen: Optional[datetime] = None  # When this run of the exception started
+    
+    def __post_init__(self):
+        if self.first_seen is None:
+            self.first_seen = self.timestamp
     
     def get_message_hash(self) -> str:
         """Generate a hash for deduplication based on source and message."""
         return f"{self.source}:{self.user_message}"
+    
+    def get_age(self) -> timedelta:
+        """
+        How long this run of the exception has been continuously active.
+        
+        Based on first_seen, not timestamp: a recurring error refreshes its
+        timestamp on every occurrence, so using timestamp would make an error
+        that keeps recurring never age out and pin the status bar forever.
+        """
+        return datetime.now() - (self.first_seen or self.timestamp)
 
 class ExceptionNotifier:
     """
@@ -116,15 +131,20 @@ class ExceptionNotifier:
                 if existing and self._should_deduplicate(existing, notification):
                     # Update existing notification
                     existing.count += 1
+                    # timestamp tracks the latest occurrence (it drives the
+                    # deduplication window).  first_seen is intentionally left
+                    # alone so cleanup can still expire a long-running error.
                     existing.timestamp = notification.timestamp
                     logger.debug(f"Deduplicated exception from {source}, count: {existing.count}")
+                    # Report the *existing* notification so the UI shows the
+                    # running repeat count, not a fresh count of 1.
+                    self._update_ui_status(existing)
                 else:
                     # New or different exception
                     self._active_exceptions[message_hash] = notification
                     logger.info(f"New exception notification from {source}: {user_message}")
-                
-                # Update UI
-                self._update_ui_status(notification)
+                    # Update UI
+                    self._update_ui_status(notification)
                 
                 # Store in history
                 self._add_to_history(source, notification)
@@ -359,15 +379,16 @@ class ExceptionNotifier:
         self._cleanup_timer.start()
     
     def _cleanup_old_exceptions(self):
-        """Remove old exceptions that have timed out."""
+        """Remove exceptions that have been continuously active for too long."""
         try:
             with self._lock:
-                current_time = datetime.now()
                 to_remove = []
                 
                 for message_hash, notification in self._active_exceptions.items():
-                    age = current_time - notification.timestamp
-                    if age.total_seconds() > self.TIMEOUT_DURATION:
+                    # Age is measured from first_seen, so an error that keeps
+                    # recurring still expires TIMEOUT_DURATION after it first
+                    # appeared instead of being kept alive forever.
+                    if notification.get_age().total_seconds() > self.TIMEOUT_DURATION:
                         to_remove.append(message_hash)
                 
                 for message_hash in to_remove:

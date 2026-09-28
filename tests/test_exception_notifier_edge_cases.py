@@ -197,7 +197,10 @@ class TestExceptionNotifierEdgeCases(unittest.TestCase):
         # Cancel timer (simulating shutdown)
         self.notifier._cleanup_timer.cancel()
         
-        # Timer should be cancelled
+        # Timer should be cancelled.  threading.Timer.cancel() only signals the
+        # event, so the thread terminates asynchronously — join it before
+        # asserting, otherwise this races the interpreter's thread teardown.
+        self.notifier._cleanup_timer.join(timeout=2)
         self.assertFalse(self.notifier._cleanup_timer.is_alive())
     
     def test_large_number_of_exceptions(self):

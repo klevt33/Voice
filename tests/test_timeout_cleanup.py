@@ -140,8 +140,14 @@ class TestTimeoutCleanup(unittest.TestCase):
         # Cancel the timer
         second_timer.cancel()
     
-    def test_cleanup_with_deduplication_updates_timestamp(self):
-        """Test that deduplicated exceptions update timestamp and avoid premature cleanup."""
+    def test_cleanup_with_deduplication_ages_out_from_first_occurrence(self):
+        """
+        A repeatedly reported error still expires, measured from first_seen.
+        
+        Deduplication refreshes `timestamp` (the latest occurrence) so the
+        dedup window keeps working, but expiry is measured from `first_seen`.
+        Otherwise an error that keeps recurring would pin the status bar forever.
+        """
         exception = RuntimeError("Repeated error")
         
         # Add exception
@@ -150,22 +156,56 @@ class TestTimeoutCleanup(unittest.TestCase):
         # Wait most of the timeout period
         time.sleep(0.8)
         
-        # Add same exception again (should update timestamp)
+        # Add same exception again - still inside the dedup window
         self.notifier.notify_exception("test_source", exception, "error", "Repeated Error")
         
-        # Wait a bit more (total time > original timeout, but < timeout from second exception)
+        # It counts as a repeat
+        active = self.notifier.get_active_exceptions()
+        notification = list(active.values())[0]
+        self.assertEqual(notification.count, 2)
+        
+        # But the run of the error still started at the first occurrence, so it
+        # keeps ageing instead of being kept alive by the repeat.
+        self.assertGreater(
+            (notification.timestamp - notification.first_seen).total_seconds(),
+            0.5,
+            "first_seen should not be refreshed by a deduplicated occurrence",
+        )
+        
+        # Wait past the timeout, measured from that first occurrence
         time.sleep(0.5)
         
         # Manually trigger cleanup
         self.notifier._cleanup_old_exceptions()
         
-        # Exception should still be active (timestamp was updated)
-        self.assertTrue(self.notifier.is_exception_active("test_source"))
+        # The error must be gone, otherwise the UI stays stuck on the error
+        self.assertFalse(self.notifier.is_exception_active("test_source"))
         
-        # Should have count = 2
-        active = self.notifier.get_active_exceptions()
-        notification = list(active.values())[0]
-        self.assertEqual(notification.count, 2)
+        # And the UI should be back to normal
+        self.assertTrue(
+            any(
+                call[0][0] == "success"
+                for call in self.mock_ui_callback.call_args_list
+            ),
+            "UI should return to Ready when a recurring error finally ages out",
+        )
+    
+    def test_repeated_error_within_window_stays_active(self):
+        """Repeated reports inside the timeout must not expire early."""
+        exception = RuntimeError("Repeated error")
+        
+        self.notifier.notify_exception("test_source", exception, "error", "Repeated Error")
+        time.sleep(0.3)
+        self.notifier.notify_exception("test_source", exception, "error", "Repeated Error")
+        time.sleep(0.3)
+        
+        # Total elapsed is 0.6s of a 1s window measured from first_seen
+        self.notifier._cleanup_old_exceptions()
+        
+        self.assertTrue(
+            self.notifier.is_exception_active("test_source"),
+            "Error inside the timeout must remain active",
+        )
     
     def test_cleanup_error_handling(self):
         """Test that cleanup errors don't break the system."""

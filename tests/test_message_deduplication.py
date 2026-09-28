@@ -92,13 +92,19 @@ class TestMessageDeduplication(unittest.TestCase):
         # Send same exception again
         self.notifier.notify_exception("transcription", exception, "error", "CUDA Error")
         
-        # Should have two separate exceptions (not deduplicated)
+        # Active exceptions are keyed by "source:user_message"
+        # (ExceptionNotification.get_message_hash), so the repeat replaces the
+        # stale entry rather than adding a second one.  The meaningful invariant
+        # is that the repeat counts as a *fresh* occurrence: the streak counter
+        # must restart rather than inflate to 2.
         active = self.notifier.get_active_exceptions()
-        self.assertEqual(len(active), 2)
-        
-        # Each should have count = 1
+        self.assertEqual(len(active), 1)
         for notification in active.values():
             self.assertEqual(notification.count, 1)
+        
+        # The UI must report it as a first occurrence, not a repeat.
+        last_call = self.mock_ui_callback.call_args[0]
+        self.assertNotIn("(2x)", last_call[1])
     
     def test_deduplication_resets_on_different_exception(self):
         """Test that deduplication count resets when a different exception occurs."""
