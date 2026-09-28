@@ -7,6 +7,7 @@ Tests connection monitoring, error detection, and reconnection flow.
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 import logging
+import time
 from datetime import datetime
 
 # Import the modules we're testing
@@ -21,6 +22,24 @@ from selenium.common.exceptions import InvalidSessionIdException, WebDriverExcep
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
 
+
+def wait_until(predicate, timeout=5.0, interval=0.01):
+    """
+    Wait for a condition that another thread is expected to satisfy.
+
+    ConnectionMonitor runs reconnection attempts on a daemon thread
+    (connection_monitor._handle_connection_loss) so that a failing Selenium call
+    never blocks the caller.  Assertions about the outcome of that reconnection
+    therefore have to wait for the worker instead of checking immediately.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
+
+
 class TestConnectionMonitor(unittest.TestCase):
     """Test cases for ConnectionMonitor class."""
     
@@ -29,6 +48,10 @@ class TestConnectionMonitor(unittest.TestCase):
         self.mock_browser_manager = Mock()
         self.mock_ui_callback = Mock()
         self.mock_reconnection_manager = Mock()
+        # _handle_connection_loss only dispatches reconnection when no attempt is
+        # already in progress.  A bare Mock returns a truthy Mock here, which
+        # would silently suppress the reconnection under test.
+        self.mock_reconnection_manager.is_reconnection_in_progress.return_value = False
         
         self.connection_monitor = ConnectionMonitor(
             self.mock_browser_manager,
@@ -79,6 +102,8 @@ class TestConnectionMonitor(unittest.TestCase):
         
         # Verify that connection loss was handled
         self.mock_ui_callback.assert_called_once_with("connection_lost", None)
+        # Reconnection runs on a worker thread, so wait for it to be dispatched.
+        wait_until(lambda: self.mock_reconnection_manager.attempt_reconnection.called)
         self.mock_reconnection_manager.attempt_reconnection.assert_called_once()
     
     def test_execute_with_monitoring_non_connection_error(self):
@@ -222,6 +247,12 @@ class TestBrowserReconnectionIntegration(unittest.TestCase):
         # Execute the operation through connection monitor
         with self.assertRaises(InvalidSessionIdException):
             self.connection_monitor.execute_with_monitoring(mock_operation)
+        
+        # Reconnection runs on a worker thread; wait for the flow to complete
+        # before asserting on the states it is responsible for setting.
+        wait_until(
+            lambda: self.connection_monitor.get_connection_state() == ConnectionState.CONNECTED
+        )
         
         # Verify the complete flow
         # 1. Connection lost status should be sent

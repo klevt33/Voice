@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 # --- Submission Status Constants ---
 SUBMISSION_NO_CONTENT = "NO_CONTENT"
 
+# How long the communication loop pauses after handing a batch back to the queue
+# because the connection is down.  A deferred batch is at the head of the queue
+# again, so without this the loop would re-process it continuously and burn a
+# core until reconnection finished.
+RECONNECT_DEFER_DELAY = 0.5
+
 class BrowserManager:
     """
     Manages the browser driver, the communication thread, and orchestrates
@@ -279,11 +285,56 @@ class BrowserManager:
             self.comm_thread = None
             logger.info("Browser communication thread shut down.")
 
+    def _requeue_batch(self, items):
+        """
+        Return an unprocessed batch to the head of the queue, preserving order.
+
+        Used when a batch is skipped because the browser connection is down: the
+        topics must survive until reconnection instead of being silently lost.
+        Items queued while this batch was in flight are kept and stay behind it.
+
+        Because the items are put back rather than consumed, the caller must not
+        call task_done() for them.
+        """
+        if not items:
+            return
+        
+        # queue.Queue exposes no public prepend.  When its internals are present
+        # the batch is prepended atomically; extendleft(reversed(...)) is what
+        # restores the original order at the head.  The attributes are checked
+        # up front so a missing one cannot leave the queue half-mutated.
+        if all(
+            hasattr(self.browser_queue, attr)
+            for attr in ("mutex", "queue", "not_empty")
+        ):
+            with self.browser_queue.mutex:
+                self.browser_queue.queue.extendleft(reversed(items))
+                self.browser_queue.not_empty.notify(len(items))
+            return
+        
+        # Fallback: rebuild the queue in the right order.
+        logger.debug("Queue internals unavailable, using rebuild fallback.")
+        deferred = []
+        while True:
+            try:
+                deferred.append(self.browser_queue.get_nowait())
+            except queue.Empty:
+                break
+        for item in items:
+            self.browser_queue.put(item)
+        for item in deferred:
+            self.browser_queue.put(item)
+        for _ in deferred:
+            self.browser_queue.task_done()
+
     def _browser_communication_loop(self):
         """
         Main loop for browser interaction. Implements the 'Prime and Submit' logic.
         """
         logger.info("Starting browser communication loop with 'Prime and Submit' logic.")
+        # Set while chat_page is missing so the deferral is logged once instead of
+        # on every pass of a reconnecting loop.
+        warned_missing_chat_page = False
         while self.run_threads_ref["active"]:
             try:
                 # Block until at least one item is in the queue
@@ -292,31 +343,56 @@ class BrowserManager:
                 continue
 
             all_items_in_batch = [first_item]
+            # Set when the batch is handed back to the queue instead of being
+            # consumed, so the finally block does not mark it done twice.
+            batch_deferred = False
             
             try:
                 if not self.chat_page:
-                    raise Exception("ChatPage is not initialized.")
+                    # cleanup_driver() nulls chat_page for the duration of a
+                    # reconnect, so this is a transient state rather than a
+                    # failure: hand the batch back instead of dropping topics
+                    # on the floor every time the loop spins during recovery.
+                    if not warned_missing_chat_page:
+                        logger.warning(
+                            "ChatPage is not initialized - deferring queued topics "
+                            "until reconnection completes."
+                        )
+                        warned_missing_chat_page = True
+                    self._requeue_batch(all_items_in_batch)
+                    batch_deferred = True
+                    time.sleep(RECONNECT_DEFER_DELAY)
+                    continue
+                warned_missing_chat_page = False
 
                 # 0. Check if we're in a disconnected state and skip processing
                 if self.connection_monitor and self.connection_monitor.get_connection_state() == ConnectionState.DISCONNECTED:
-                    logger.info("Connection is disconnected - skipping batch processing to allow reconnection.")
-                    # Don't call task_done here - let the finally block handle it
+                    logger.info("Connection is disconnected - deferring batch until reconnection.")
+                    self._requeue_batch(all_items_in_batch)
+                    batch_deferred = True
+                    # The batch is back in the queue, so queue.get() will not
+                    # block.  Pause to avoid spinning on it until reconnection.
+                    time.sleep(RECONNECT_DEFER_DELAY)
                     continue
                 
                 # 0.1. Validate connection health before proceeding (only if connected)
                 if self.connection_monitor and self.connection_monitor.get_connection_state() == ConnectionState.CONNECTED:
                     try:
                         if not self.test_connection_health():
-                            logger.warning("Connection health check failed - skipping batch to allow reconnection.")
+                            logger.warning("Connection health check failed - deferring batch to allow reconnection.")
                             # Treat health check failure as a connection error to trigger recovery
                             self.connection_monitor._handle_connection_loss()
-                            # Don't call task_done here - let the finally block handle it
+                            self._requeue_batch(all_items_in_batch)
+                            batch_deferred = True
+                            time.sleep(RECONNECT_DEFER_DELAY)
                             continue
                     except Exception as e:
                         if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                             logger.warning(f"Connection health check detected connection error: {e}")
-                            # Connection error will be handled by connection monitor, skip this batch
-                            # Don't call task_done here - let the finally block handle it
+                            # Connection error will be handled by connection monitor, defer the batch
+                            self._requeue_batch(all_items_in_batch)
+                            batch_deferred = True
+                            time.sleep(RECONNECT_DEFER_DELAY)
                             continue
                         else:
                             logger.warning(f"Connection health check error (non-connection): {e}")
@@ -327,8 +403,10 @@ class BrowserManager:
                 except Exception as e:
                     if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                         logger.error(f"Connection error during focus browser window: {e}")
-                        # Connection error will be handled by connection monitor, skip this batch
-                        # Don't call task_done here - let the finally block handle it
+                        # Connection error will be handled by connection monitor, defer the batch
+                        self._requeue_batch(all_items_in_batch)
+                        batch_deferred = True
+                        time.sleep(RECONNECT_DEFER_DELAY)
                         continue
                     else:
                         # Non-connection error, log but continue
@@ -373,8 +451,10 @@ class BrowserManager:
                 except Exception as e:
                     if self.connection_monitor and self.connection_monitor.is_connection_error(e):
                         logger.error(f"Connection error during prime input: {e}")
-                        # Connection error will be handled by connection monitor, skip this batch
-                        # Don't call task_done here - let the finally block handle it
+                        # Connection error will be handled by connection monitor, defer the batch
+                        self._requeue_batch(all_items_in_batch)
+                        batch_deferred = True
+                        time.sleep(RECONNECT_DEFER_DELAY)
                         continue
                     else:
                         logger.error(f"Non-connection error during prime input: {e}")
@@ -415,6 +495,9 @@ class BrowserManager:
 
                 if is_ready is None:
                     # Connection error occurred during ready check, already handled
+                    self._requeue_batch(all_items_in_batch)
+                    batch_deferred = True
+                    time.sleep(RECONNECT_DEFER_DELAY)
                     continue
                 elif not is_ready:
                     logger.error("Timed out waiting for submit button. Aborting batch.")
@@ -476,8 +559,9 @@ class BrowserManager:
                 logger.error(f"Failed to process and submit batch: {e}", exc_info=True)
                 self.ui_update_callback(SUBMISSION_FAILED_OTHER, [])
             finally:
-                for _ in all_items_in_batch:
-                    self.browser_queue.task_done()
+                if not batch_deferred:
+                    for _ in all_items_in_batch:
+                        self.browser_queue.task_done()
 
         logger.info("Browser communication loop has exited.")
 
@@ -558,12 +642,16 @@ class BrowserManager:
             return False
 
     def preserve_queue_state(self):
-        """Preserve pending queue items during reconnection."""
-        # The queue is already preserved as it's a separate object
-        # This method exists for future enhancements if needed
+        """
+        Report how many topics are still pending in the queue.
+
+        Batches skipped during a connection outage are genuinely retained: the
+        communication loop hands them back with _requeue_batch() rather than
+        consuming them.  This is a diagnostic for the pending depth.
+        """
         queue_size = self.browser_queue.qsize()
         if queue_size > 0:
-            logger.info(f"Preserving {queue_size} items in browser queue during reconnection.")
+            logger.info(f"{queue_size} items pending in browser queue during reconnection.")
         return queue_size
 
 # Standalone utility function

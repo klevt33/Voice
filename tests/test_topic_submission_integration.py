@@ -21,7 +21,9 @@ import threading
 from unittest.mock import Mock, MagicMock, patch
 from selenium.common.exceptions import InvalidSessionIdException
 
-from browser import BrowserManager, SUBMISSION_SUCCESS, SUBMISSION_FAILED_OTHER
+from browser import BrowserManager
+# Submission status constants live in chat_page since the ChatPage extraction.
+from chat_page import SUBMISSION_SUCCESS, SUBMISSION_FAILED_OTHER
 from connection_monitor import ConnectionMonitor, ConnectionState
 from reconnection_manager import ReconnectionManager
 

@@ -21,10 +21,27 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import the modules we're testing
-from browser import BrowserManager, SUBMISSION_SUCCESS, SUBMISSION_FAILED_OTHER
+from browser import BrowserManager
+# Submission status constants live in chat_page since the ChatPage extraction.
+from chat_page import SUBMISSION_SUCCESS, SUBMISSION_FAILED_OTHER
 from connection_monitor import ConnectionMonitor, ConnectionState
 from reconnection_manager import ReconnectionManager
 from selenium.common.exceptions import InvalidSessionIdException
+
+
+def wait_until(predicate, timeout=10.0, interval=0.02):
+    """
+    Wait for a condition that a worker thread is expected to satisfy.
+
+    ConnectionMonitor performs reconnection on a daemon thread, so assertions
+    about the outcome have to wait for that worker rather than race it.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
 
 
 class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
@@ -59,6 +76,18 @@ class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
         self.mock_chat_page = Mock()
         self.browser_manager.driver = self.mock_driver
         self.browser_manager.chat_page = self.mock_chat_page
+        
+        # Give the chat page mocks a *successful* default.
+        #
+        # The communication loop waits for the submit button with
+        # `while time.time() - start_time < 300` (browser.py:386) and no sleep
+        # or stop-flag check, so a Mock that never returns SUBMISSION_SUCCESS
+        # leaves a daemon thread spinning at 100% CPU for five minutes that
+        # tearDown cannot stop.  Defaulting the mock to the ready/success values
+        # means any test that enqueues work exits that loop immediately.
+        self.mock_chat_page.is_ready_for_input.return_value = SUBMISSION_SUCCESS
+        self.mock_chat_page.prime_input.return_value = True
+        self.mock_chat_page.submit_message.return_value = True
         
         # Set up connection monitor and reconnection manager
         self.browser_manager.reconnection_manager = ReconnectionManager(self.browser_manager, self.status_callback)
@@ -105,10 +134,14 @@ class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
         status_keys = [update[0] for update in self.status_updates]
         self.assertIn("connection_lost", status_keys, "UI should show connection lost status")
         
-        # Verify that the UI callback was called with failure status
-        self.assertTrue(len(self.ui_updates) > 0, "UI callback should have been called")
-        ui_status = self.ui_updates[-1][0]  # Get the last status update
-        self.assertEqual(ui_status, SUBMISSION_FAILED_OTHER, "UI should show submission failed status")
+        # The batch is skipped rather than reported as a submission failure:
+        # browser.py:373-378 logs the connection error and `continue`s, leaving
+        # the connection_lost status as the single source of truth.  Asserting a
+        # SUBMISSION_FAILED_OTHER callback here would contradict that design.
+        self.assertFalse(
+            [status for status, _ in self.ui_updates if status == SUBMISSION_FAILED_OTHER],
+            "Connection loss should not also be reported as a submission failure",
+        )
     
     def test_topic_submission_recovery_after_reconnection(self):
         """Test that topic submission works after successful reconnection."""
@@ -119,7 +152,12 @@ class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
         
         # Mock successful reconnection
         def mock_reinitialize():
-            # Reset the mock to simulate successful reconnection
+            # Reset the mock to simulate successful reconnection.
+            # cleanup_driver() nulls out driver/chat_page (browser.py:494-497),
+            # so a real reconnection has to install a fresh ChatPage; without this
+            # the communication loop keeps raising "ChatPage is not initialized".
+            self.browser_manager.driver = self.mock_driver
+            self.browser_manager.chat_page = self.mock_chat_page
             self.mock_chat_page.prime_input.side_effect = None
             self.mock_chat_page.prime_input.return_value = True
             self.mock_chat_page.submit_message.return_value = True
@@ -141,15 +179,29 @@ class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
         # Wait for the error to be processed
         time.sleep(0.5)
         
-        # Verify connection error was detected
-        self.assertEqual(
-            self.browser_manager.connection_monitor.get_connection_state(), 
-            ConnectionState.DISCONNECTED
+        # Verify connection error was detected.  DISCONNECTED is only a
+        # transitional state — the monitor immediately starts reconnection on a
+        # worker thread, so assert the loss was reported rather than pinning a
+        # specific moment-in-time state value.
+        self.assertIn(
+            "connection_lost",
+            [update[0] for update in self.status_updates],
+            "Connection loss should be reported to the status bar",
+        )
+        self.assertNotEqual(
+            self.browser_manager.connection_monitor.get_connection_state(),
+            ConnectionState.CONNECTED,
         )
         
-        # Simulate successful reconnection
-        success = self.browser_manager.reconnection_manager.attempt_reconnection()
-        self.assertTrue(success, "Reconnection should succeed")
+        # Wait for the automatic reconnection that the connection monitor kicks
+        # off on a worker thread when it detects the error.  Calling
+        # attempt_reconnection() here instead would race that worker and return
+        # False, because ReconnectionManager rejects concurrent attempts
+        # (reconnection_manager.py:35-37).
+        wait_until(
+            lambda: self.browser_manager.connection_monitor.get_connection_state()
+            == ConnectionState.CONNECTED
+        )
         
         # Verify connection state is restored
         self.assertEqual(
@@ -208,10 +260,60 @@ class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
             "Communication thread should be restarted after reconnection"
         )
     
-    def test_queue_preservation_during_reconnection(self):
-        """Test that pending queue items are preserved during reconnection."""
+    def test_requeue_batch_preserves_order(self):
+        """A deferred batch goes back to the head, ahead of later items."""
+        q = queue.Queue()
+        for name in ("Topic 1", "Topic 2"):
+            q.put({"content": name})
+        # This arrives while the batch above was in flight.
+        q.put({"content": "Newer topic"})
         
-        # Add multiple items to the queue
+        stub = Mock()
+        stub.browser_queue = q
+        BrowserManager._requeue_batch(stub, [{"content": "Topic 3"}])
+        
+        contents = []
+        while not q.empty():
+            contents.append(q.get_nowait().get("content"))
+        self.assertEqual(
+            contents,
+            ["Topic 3", "Topic 1", "Topic 2", "Newer topic"],
+            "Deferred batch must return to the head in its original order",
+        )
+    
+    def test_requeue_batch_fallback_without_queue_internals(self):
+        """The fallback path still preserves order when Queue internals are gone."""
+        class MinimalQueue:
+            """A stand-in for queue.Queue without .mutex/.queue/.not_empty."""
+            def __init__(self):
+                self._items = []
+            def put(self, item):
+                self._items.append(item)
+            def get_nowait(self):
+                if not self._items:
+                    raise queue.Empty
+                return self._items.pop(0)
+            def qsize(self):
+                return len(self._items)
+            def task_done(self):
+                pass
+        
+        q = MinimalQueue()
+        q.put({"content": "Topic 1"})
+        q.put({"content": "Topic 2"})
+        
+        stub = Mock()
+        stub.browser_queue = q
+        BrowserManager._requeue_batch(stub, [{"content": "Topic 3"}])
+        
+        contents = []
+        while q.qsize():
+            contents.append(q.get_nowait().get("content"))
+        self.assertEqual(contents, ["Topic 3", "Topic 1", "Topic 2"])
+    
+    def test_queue_preservation_during_reconnection(self):
+        """Queued topics must survive a reconnect instead of being dropped."""
+        
         test_topics = [
             {"content": "Topic 1", "topic_objects": []},
             {"content": "Topic 2", "topic_objects": []},
@@ -221,29 +323,40 @@ class TestBrowserTopicSubmissionRecovery(unittest.TestCase):
         for topic in test_topics:
             self.browser_manager.browser_queue.put(topic)
         
-        # Verify queue has items
-        initial_queue_size = self.browser_manager.browser_queue.qsize()
-        self.assertEqual(initial_queue_size, 3, "Queue should have 3 items")
+        self.assertEqual(self.browser_manager.browser_queue.qsize(), 3, "Queue should have 3 items")
         
-        # Simulate connection error that prevents processing
+        # Simulate the state during a reconnect: connection down and chat_page
+        # torn down by cleanup_driver().
         self.browser_manager.connection_monitor.set_connection_state(ConnectionState.DISCONNECTED)
+        self.browser_manager.chat_page = None
         
-        # Mock successful reconnection
-        self.browser_manager.reinitialize_connection = Mock(return_value=True)
-        self.browser_manager.new_chat = Mock(return_value=True)
+        # Let the communication loop run several defer cycles.  Every pass must
+        # hand the batch back rather than consuming it.
+        time.sleep(1.0)
+        
+        # Nothing may be lost while the connection is down.
+        self.assertEqual(
+            self.browser_manager.browser_queue.qsize(),
+            3,
+            "Queued topics must not be consumed while the connection is down",
+        )
+        
+        # Bring the connection back, as a successful reconnection would.
+        self.browser_manager.chat_page = self.mock_chat_page
+        self.browser_manager.connection_monitor.set_connection_state(ConnectionState.CONNECTED)
         self.browser_manager.test_connection_health = Mock(return_value=True)
+        self.browser_manager.focus_browser_window = Mock()
         
-        # Attempt reconnection
-        success = self.browser_manager.reconnection_manager.attempt_reconnection()
-        self.assertTrue(success, "Reconnection should succeed")
+        # Wait for the deferred topics to be delivered.
+        wait_until(lambda: self.mock_chat_page.submit_message.called)
         
-        # Verify queue items are preserved
-        final_queue_size = self.browser_manager.browser_queue.qsize()
-        self.assertEqual(final_queue_size, 3, "Queue items should be preserved during reconnection")
-        
-        # Verify that the preserve_queue_state method works
-        preserved_count = self.browser_manager.preserve_queue_state()
-        self.assertEqual(preserved_count, 3, "preserve_queue_state should return correct count")
+        # All three topics must reach the browser, in their original order.
+        payload = self.mock_chat_page.submit_message.call_args[0][0]
+        self.assertIn("Topic 1", payload)
+        self.assertIn("Topic 2", payload)
+        self.assertIn("Topic 3", payload)
+        self.assertLess(payload.index("Topic 1"), payload.index("Topic 2"))
+        self.assertLess(payload.index("Topic 2"), payload.index("Topic 3"))
 
 
 if __name__ == '__main__':
