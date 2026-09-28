@@ -49,9 +49,11 @@ class TestUIExceptionStatus(unittest.TestCase):
         self.ui_view.update_browser_status("cuda_error")
         
         # Check that the status indicator and message were updated
-        indicator_color = self.ui_view.browser_status_indicator_label.cget("foreground")
+        # Tk returns a color object rather than a plain string for named
+        # colours such as "red", so normalise before comparing.
+        indicator_color = str(self.ui_view.browser_status_indicator_label.cget("foreground"))
         message_text = self.ui_view.status_message_label.cget("text")
-        message_color = self.ui_view.status_message_label.cget("foreground")
+        message_color = str(self.ui_view.status_message_label.cget("foreground"))
         
         self.assertEqual(indicator_color, "red")
         self.assertEqual(message_color, "red")
@@ -60,9 +62,9 @@ class TestUIExceptionStatus(unittest.TestCase):
         # Test audio error status
         self.ui_view.update_browser_status("audio_error")
         
-        indicator_color = self.ui_view.browser_status_indicator_label.cget("foreground")
+        indicator_color = str(self.ui_view.browser_status_indicator_label.cget("foreground"))
         message_text = self.ui_view.status_message_label.cget("text")
-        message_color = self.ui_view.status_message_label.cget("foreground")
+        message_color = str(self.ui_view.status_message_label.cget("foreground"))
         
         self.assertEqual(indicator_color, "#FF8C00")
         self.assertEqual(message_color, "#FF8C00")
@@ -71,9 +73,9 @@ class TestUIExceptionStatus(unittest.TestCase):
         # Test transcription error status
         self.ui_view.update_browser_status("transcription_error")
         
-        indicator_color = self.ui_view.browser_status_indicator_label.cget("foreground")
+        indicator_color = str(self.ui_view.browser_status_indicator_label.cget("foreground"))
         message_text = self.ui_view.status_message_label.cget("text")
-        message_color = self.ui_view.status_message_label.cget("foreground")
+        message_color = str(self.ui_view.status_message_label.cget("foreground"))
         
         self.assertEqual(indicator_color, "red")
         self.assertEqual(message_color, "red")
@@ -89,7 +91,7 @@ class TestUIExceptionStatus(unittest.TestCase):
         self.assertEqual(message_text, custom_message)
         
         # Color should still be from the status type
-        indicator_color = self.ui_view.browser_status_indicator_label.cget("foreground")
+        indicator_color = str(self.ui_view.browser_status_indicator_label.cget("foreground"))
         self.assertEqual(indicator_color, "red")
 
 if __name__ == '__main__':

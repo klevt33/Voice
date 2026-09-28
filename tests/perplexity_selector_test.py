@@ -64,7 +64,7 @@ def get_chrome_driver_test() -> webdriver.Chrome | None:
         logging.error(f"Failed to connect to Chrome: {e}", exc_info=True)
         return None
 
-def test_general_element(driver: webdriver.Chrome, description: str, by_method: str, selector: str, timeout: int = 7):
+def check_general_element(driver: webdriver.Chrome, description: str, by_method: str, selector: str, timeout: int = 7):
     logging.info(f"\n--- Testing General Element: {description} ---")
     logging.info(f"Using {by_method} with selector: {selector}")
     wait = WebDriverWait(driver, timeout)
@@ -132,7 +132,7 @@ if __name__ == "__main__":
             logging.info("\n=== Testing General Page Elements (No Iframe switching yet) ===")
             success_count = 0
             for desc, by_method, sel_str in general_elements_to_test:
-                if test_general_element(driver, desc, by_method, sel_str):
+                if check_general_element(driver, desc, by_method, sel_str):
                     success_count += 1
                 time.sleep(0.5) # Small pause between tests
             
@@ -147,7 +147,7 @@ if __name__ == "__main__":
                 except: pass
             elif success_count < len(general_elements_to_test) -1 : # -1 because we included ask-input for reference
                  logging.warning("Found some general elements, but not all. The 'ask-input' element might still be tricky (e.g. iframe, shadow DOM, or very dynamic).")
-                 if not test_general_element(driver, "Input Element ID (Re-check)", By.CSS_SELECTOR, "[id='ask-input']"):
+                 if not check_general_element(driver, "Input Element ID (Re-check)", By.CSS_SELECTOR, "[id='ask-input']"):
                      logging.info("Re-confirming: 'ask-input' by ID failed in direct check.")
                      logging.info("Consider iframe check or shadow DOM if other elements are found.")
 

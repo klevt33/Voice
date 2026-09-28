@@ -83,8 +83,16 @@ class TestAudioErrorDetection(unittest.TestCase):
     @patch('audio_handler.validate_device_info')
     def test_recording_thread_error_notification(self, mock_validate, mock_get_device):
         """Test that recording thread notifies about errors."""
-        # Mock device detection to fail initially, then succeed
-        mock_get_device.return_value = {"index": 0, "name": "Test Mic"}
+        # Mock device detection to fail initially, then succeed.
+        # recording_thread reads maxInputChannels/defaultSampleRate with bracket
+        # access (audio_handler.py:339-342), so the stub must supply them or the
+        # stream is never created and no recording error is ever raised.
+        mock_get_device.return_value = {
+            "index": 0,
+            "name": "Test Mic",
+            "maxInputChannels": 1,
+            "defaultSampleRate": 16000,
+        }
         mock_validate.return_value = True
         
         # Mock PyAudio stream that raises an error

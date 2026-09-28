@@ -73,7 +73,9 @@ class TestAudioRecoveryDetection(unittest.TestCase):
         mock_audio.get_sample_size.return_value = 2
         audio_queue = queue.Queue()
         
-        frames = [b"audio_data_1", b"audio_data_2"]
+        # process_recording discards recordings shorter than 5 frames, so use a
+        # frame count that actually reaches the recovery/clear path.
+        frames = [b"audio_data_%d" % i for i in range(6)]
         process_recording(frames, "ME", mock_audio, audio_queue, None, self.exception_notifier)
         
         # Verify that audio recording error was cleared
@@ -159,7 +161,7 @@ class TestAudioRecoveryDetection(unittest.TestCase):
         mock_audio.get_sample_size.return_value = 2
         audio_queue = queue.Queue()
         
-        frames = [b"audio_data_1", b"audio_data_2"]
+        frames = [b"audio_data_%d" % i for i in range(6)]
         process_recording(frames, "ME", mock_audio, audio_queue, None, self.exception_notifier)
         
         # Verify that only recording error was cleared, device error remains
