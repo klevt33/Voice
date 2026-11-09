@@ -99,11 +99,19 @@ async def transcribe(request: Request) -> JSONResponse:
         logger.info("Received empty audio payload — returning empty result.")
         return JSONResponse({"text": "", "processing_time": 0.0})
 
+    # Clients that split speakers request word timings explicitly.
+    wt_param = request.query_params.get("word_timestamps")
+    word_timestamps = (
+        wt_param.lower() in ("1", "true", "yes") if wt_param is not None else None
+    )
+
     logger.info(f"Received audio payload: {len(audio_bytes)} bytes — waiting for lock")
     try:
         async with _transcribe_lock:
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(_executor, run_transcription, _whisper_model, audio_bytes)
+            result = await loop.run_in_executor(
+                _executor, run_transcription, _whisper_model, audio_bytes, word_timestamps
+            )
         return JSONResponse(result)
     except Exception as exc:
         logger.error(f"Transcription failed: {exc}")

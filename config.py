@@ -25,7 +25,8 @@ FRAMES_PER_BUFFER = int(SAMPLE_RATE * SILENCE_DURATION / CHUNK_SIZE)  # Calculat
 
 # Whisper model configuration
 MODELS_FOLDER = "faster_whisper_models"  # Folder to save faster_whisper models
-WHISPER_MODEL = "turbo"   # Whisper model to use. Options: "turbo" (fast, recommended), "large-v3" (slower, max accuracy)
+WHISPER_MODEL = "large-v3"   # Whisper model to use. Options: "turbo" (fast, recommended), "large-v3" (slower, max accuracy)
+# WHISPER_MODEL = "turbo"   # used on the other machine
 COMPUTE_TYPE = "float16"  # Compute type (float16, int8)
 LANGUAGE = "en"        # Set to English only
 BEAM_SIZE = 5          # Beam size for faster-whisper
@@ -44,6 +45,73 @@ WHISPER_HOTWORDS: list[str] = [
 WHISPER_INITIAL_PROMPT: str | None = (
     "The following is a spoken transcript. Use proper capitalization and punctuation."
 )
+
+# --- Hallucination defenses -----------------------------------------------
+# Non-speech audio (breathing, keyboard, background noise) makes Whisper —
+# especially the turbo model — emit fluent but invented text. These layers
+# stop noise before it reaches the decoder and filter what slips through.
+
+# Silero VAD inside faster-whisper: strips non-speech audio before decoding.
+WHISPER_VAD_ENABLED = True
+WHISPER_VAD_PARAMETERS = {
+    "threshold": 0.5,                  # speech probability cutoff
+    "min_speech_duration_ms": 100,     # shorter speech chunks are discarded
+    "min_silence_duration_ms": 500,    # silence shorter than this stays attached to speech
+    "speech_pad_ms": 300,              # padding around detected speech
+}
+# Feed previously decoded text back as context. False prevents hallucination
+# echo loops (one bad segment contaminating the next); our recordings are
+# already per-utterance chunks so context adds little.
+WHISPER_CONDITION_ON_PREV_TEXT = False
+# Mild anti-repetition decoding pressure (kills "clip clip clip" loops).
+WHISPER_REPETITION_PENALTY = 1.1
+WHISPER_NO_REPEAT_NGRAM_SIZE = 3
+# Word-level timestamps (needed for speaker splitting; small overhead).
+WHISPER_WORD_TIMESTAMPS = False
+
+# Client-side VAD gate: skips transcription entirely when a recorded segment
+# contains less speech than SPEECH_GATE_MIN_SPEECH_S. Runs locally before any
+# backend call, so it also protects the Groq API path. Auto-disabled if
+# faster-whisper is not installed.
+SPEECH_GATE_ENABLED = True
+SPEECH_GATE_MIN_SPEECH_S = 0.4   # seconds of detected speech required
+SPEECH_GATE_VAD_THRESHOLD = 0.5  # Silero speech probability cutoff
+
+# Per-segment confidence post-filter (faster-whisper / Groq verbose_json
+# segment metadata). A segment is dropped when any threshold is crossed.
+SEG_NO_SPEECH_PROB_DROP = 0.6   # model thinks the segment is not speech
+SEG_NO_SPEECH_LOGPROB = -0.6    # ... AND avg logprob below this → dropped
+SEG_MIN_AVG_LOGPROB = -1.0      # very low-confidence decode (dropped alone)
+SEG_MAX_COMPRESSION_RATIO = 2.4 # degenerate/repetitive output (dropped alone)
+
+# --- Speaker separation (OTHERS channel) ------------------------------------
+# Splits OTHERS audio containing multiple speakers into separate topics using
+# client-side pyannote diarization. Requires: pyannote.audio==3.3.2 (pinned —
+# 4.x needs torch>=2.8 and breaks the cu121 build; see SETUP_GUIDE.md),
+# a HuggingFace account with accepted licenses for
+# pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0, and the
+# HF_TOKEN environment variable set to a read token (see SETUP_GUIDE.md).
+SPEAKER_SPLIT_ENABLED = True
+DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+DIARIZATION_MIN_TURN_S = 0.8    # speaker turns shorter than this merge into neighbours
+DIARIZATION_MIN_SEGMENT_S = 2.0 # audio shorter than this skips diarization
+HF_TOKEN_ENV_VAR = "HF_TOKEN"
+# Clustering sensitivity for pyannote (default pipeline value ~0.70).
+# Lower = more willing to declare a speaker change for similar voices
+# (e.g. two men or two women); higher = fewer, more confident splits.
+DIARIZATION_CLUSTERING_THRESHOLD = 0.4
+# Diarization turn boundaries lag the true speech onset slightly, which
+# drags a turn's first word ("I", "Oh") into the previous speaker's block.
+# Shift turn starts earlier by this many seconds before aligning words.
+DIARIZATION_BOUNDARY_SHIFT_S = 0.15
+# After shifting, snap each turn boundary to the closest inter-word gap
+# within this window (seconds) — splits land on natural pauses instead of
+# cutting a turn's first word into the previous block.
+DIARIZATION_BOUNDARY_SNAP_S = 0.35
+# Minimum cluster size for speaker clustering (pipeline default ~15).
+# Lower = short turns (quick answers ~1-2s) can be their own speaker;
+# too low can fragment one speaker into many.
+DIARIZATION_MIN_CLUSTER_SIZE = 5
 
 # API Transcription Configuration
 GROQ_API_KEY_ENV_VAR = "GROQ_API_KEY"  # Environment variable name for Groq API key

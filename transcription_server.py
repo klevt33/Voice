@@ -131,6 +131,12 @@ async def transcribe(request: Request) -> JSONResponse:
         logger.info("Received empty audio payload — returning empty result.")
         return JSONResponse({"text": "", "processing_time": 0.0})
 
+    # Clients that split speakers request word timings explicitly.
+    wt_param = request.query_params.get("word_timestamps")
+    word_timestamps = (
+        wt_param.lower() in ("1", "true", "yes") if wt_param is not None else None
+    )
+
     logger.info(f"Received audio payload: {len(audio_bytes)} bytes")
 
     # Forward to ModelService when available
@@ -139,8 +145,11 @@ async def transcribe(request: Request) -> JSONResponse:
             headers = {"Content-Type": "application/octet-stream"}
             if MODEL_SERVICE_API_KEY:
                 headers["Authorization"] = f"Bearer {MODEL_SERVICE_API_KEY}"
+            forward_url = f"{_model_service_url}/transcribe"
+            if word_timestamps is not None:
+                forward_url += f"?word_timestamps={'true' if word_timestamps else 'false'}"
             forward_response = requests.post(
-                f"{_model_service_url}/transcribe",
+                forward_url,
                 data=audio_bytes,
                 headers=headers,
                 timeout=60.0,
@@ -161,7 +170,7 @@ async def transcribe(request: Request) -> JSONResponse:
     # Local transcription
     start_time = time.time()
     try:
-        result = run_transcription(_whisper_model, audio_bytes)
+        result = run_transcription(_whisper_model, audio_bytes, word_timestamps)
         return JSONResponse(result)
     except Exception as exc:
         processing_time = time.time() - start_time

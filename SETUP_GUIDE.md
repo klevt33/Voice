@@ -117,6 +117,50 @@ The transcription method checkbox appears in the Topics section:
 ## Environment Variables
 
 - `GROQ_API_KEY`: Your Groq API key for cloud transcription
+- `HF_TOKEN`: HuggingFace read token — only needed when `SPEAKER_SPLIT_ENABLED = True`
+
+## Speaker Separation (optional)
+
+The app can split OTHERS-channel audio containing multiple speakers into
+separate topics using client-side [pyannote](https://github.com/pyannote/pyannote-audio)
+diarization. Whisper word timestamps are aligned to detected speaker turns.
+
+**One-time setup:**
+
+1. Install pyannote **pinned to 3.3.2** (kept out of requirements.txt on
+   purpose — a bare `pip install pyannote.audio` grabs 4.x, which requires
+   torch>=2.8 and will replace the pinned CUDA torch build with a CPU one,
+   breaking GPU transcription). `huggingface-hub` is also pinned to 0.36.x:
+   1.x removed the `use_auth_token` argument that pyannote 3.x passes to
+   `hf_hub_download`, so pipeline loading fails with a TypeError on 1.x:
+   ```bash
+   pip install "pyannote.audio==3.3.2" "speechbrain==1.0.3" "pytorch-metric-learning<3" "huggingface-hub==0.36.2" torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121 --extra-index-url https://pypi.org/simple
+   ```
+2. Create a free HuggingFace account, then accept the license terms on **both**
+   gated model pages (click "Agree and access repository"):
+   - https://huggingface.co/pyannote/speaker-diarization-3.1
+   - https://huggingface.co/pyannote/segmentation-3.0
+3. Create a read-only token at https://huggingface.co/settings/tokens
+4. Set the environment variable and restart the app:
+   ```
+   setx HF_TOKEN your_hf_token_here
+   ```
+   The first run downloads ~1.5 GB of models into the HuggingFace cache.
+5. Enable in `config.py`:
+   ```python
+   SPEAKER_SPLIT_ENABLED = True
+   ```
+
+Runs on the machine running the app (CUDA if available, CPU otherwise) and
+works with every transcription backend, including Groq. Falls back to the
+unsplit topic automatically when diarization is unavailable, disabled, or
+detects a single speaker.
+
+**Note for network GPU users:** splitting needs word-level timestamps from the
+transcription server, so `transcription_server.py`/`model_service.py` on the
+GPU machine must run the updated code (git pull + restart). Clients request
+timings via `?word_timestamps=true` automatically, so no extra server config
+is needed once it's updated.
 
 ## Performance Tips
 

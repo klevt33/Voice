@@ -41,6 +41,39 @@ MIN_TRUNCATED_WORD_LEN = 3
 # prompt echo has been cut off.
 _LEADING_NOISE = " \t\r\n.,;:!?-–—\"'()[]…"
 
+# Vocal fillers that carry no information.  An utterance made up of nothing but
+# these (e.g. "Mh, mh, mh" — turbo loves inventing these on breath noise) is
+# junk; a real sentence that merely contains one is not.
+_FILLER_WORDS = frozenset({
+    "mh", "mm", "mhm", "hm", "hmm", "uh", "um", "ah", "eh", "oh", "huh",
+})
+
+# Scripts that can never appear in genuine English output.  LANGUAGE is forced
+# to "en", yet turbo still decodes noise into CJK/Hangul/Cyrillic garbage.
+_FOREIGN_SCRIPT_RE = re.compile(
+    "["
+    "぀-ヿ"      # Hiragana + Katakana
+    "㐀-䶿一-鿿豈-﫿"  # CJK ideographs (ext-A + unified + compat)
+    "가-힯ᄀ-ᅟ"  # Hangul syllables + Jamo
+    "Ѐ-ӿ"      # Cyrillic + supplement
+    "؀-ۿݐ-ݿ"  # Arabic + supplement
+    "ऀ-ॿ"      # Devanagari
+    "]"
+)
+
+# A word (>= 2 chars) repeated verbatim 4+ times in a row — "clip clip clip
+# clip" — is a decoding loop, not speech.
+_CONSECUTIVE_WORD_REPEAT_RE = re.compile(
+    r"\b(\w{2,})\b(?:[\s,.!?;:'\"()\-–—]+\1\b){3,}", re.IGNORECASE
+)
+
+# Texts with this many words or more whose unique-word ratio falls below
+# _MIN_UNIQUE_WORD_RATIO are degenerate repetitions even when the repeats are
+# not strictly consecutive ("Select the product. Select the product. ...").
+_REPEAT_CHECK_MIN_WORDS = 6
+_MIN_UNIQUE_WORD_RATIO = 0.45
+_MIN_CONSECUTIVE_RUN = 4
+
 # Whole-text junk prefixes, matched case-insensitively after punctuation removal.
 JUNK_TEXT_PREFIXES = (
     "for more information visit",
@@ -184,11 +217,54 @@ def _is_sound_marker(text: str) -> bool:
     return any(word in lt for word in _SOUND_MARKER_WORDS)
 
 
-def _apply_text_junk_filter(text: str) -> str:
+def _hotword_vocabulary() -> frozenset:
+    """Normalised word set built from the configured Whisper hotwords.
+
+    Turbo hallucinations on non-speech frequently echo the hotwords themselves
+    ("Claude Claude", "Pooja", "Claude Code Sonnet"), so a text made up
+    exclusively of hotwords is treated like an initial-prompt echo.
+    """
+    try:
+        from config import WHISPER_HOTWORDS
+    except Exception:
+        return frozenset()
+    words = set()
+    for phrase in WHISPER_HOTWORDS or []:
+        words.update(w for w, _ in _normalize_words(phrase))
+    return frozenset(words)
+
+
+def _is_filler_only(words: List[str]) -> bool:
+    """True when every word is a vocal filler ("Mh, mh, mh", "Mm-mm-mm")."""
+    return bool(words) and all(w in _FILLER_WORDS for w in words)
+
+
+def _is_hotwords_only(words: List[str], hotword_words: frozenset) -> bool:
+    """True when a >=2-word text is composed exclusively of hotwords."""
+    return (
+        len(words) >= 2
+        and bool(hotword_words)
+        and all(w in hotword_words for w in words)
+    )
+
+
+def _is_degenerate_repetition(text: str) -> bool:
+    """True for decoding-loop output ("clip clip clip clip", repeated phrases)."""
+    if _CONSECUTIVE_WORD_REPEAT_RE.search(text):
+        return True
+    words = [w for w, _ in _normalize_words(text)]
+    if len(words) >= _REPEAT_CHECK_MIN_WORDS:
+        return len(set(words)) / len(words) < _MIN_UNIQUE_WORD_RATIO
+    return False
+
+
+def _apply_text_junk_filter(
+    text: str, hotword_words: frozenset = frozenset()
+) -> str:
     """Apply the length- and phrase-based junk rules. Returns "" when filtered."""
     lt = text.casefold()
     if (
-        ("thank" in lt or "subtitles" in lt or "captions" in lt)
+        ("thank" in lt or "subtitle" in lt or "captions" in lt)
         and len(text) <= 40
     ) or len(text) <= 10:
         return ""
@@ -201,7 +277,74 @@ def _apply_text_junk_filter(text: str) -> str:
         return ""
     if _is_sound_marker(text):
         return ""
+    if _FOREIGN_SCRIPT_RE.search(text):
+        return ""
+    words = [w for w, _ in _normalize_words(text)]
+    if _is_filler_only(words) or _is_hotwords_only(words, hotword_words):
+        return ""
+    if _is_degenerate_repetition(text):
+        return ""
     return text
+
+
+def _fields_are_confident(
+    no_speech_prob, avg_logprob, compression_ratio
+) -> bool:
+    """Confidence thresholds shared by faster-whisper and API segment metadata.
+
+    Uses the same signals faster-whisper applies internally: a segment is
+    non-speech when the model's no-speech score is high *and* its average log
+    probability is low.  Additionally, very low log probability or a very high
+    compression ratio alone mark a degenerate decode.  Missing values (None)
+    never trigger a drop.
+    """
+    from config import (
+        SEG_NO_SPEECH_PROB_DROP, SEG_NO_SPEECH_LOGPROB,
+        SEG_MIN_AVG_LOGPROB, SEG_MAX_COMPRESSION_RATIO,
+    )
+
+    def _num(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    no_speech_prob = _num(no_speech_prob)
+    avg_logprob = _num(avg_logprob)
+    compression_ratio = _num(compression_ratio)
+
+    if (
+        no_speech_prob is not None
+        and avg_logprob is not None
+        and no_speech_prob > SEG_NO_SPEECH_PROB_DROP
+        and avg_logprob < SEG_NO_SPEECH_LOGPROB
+    ):
+        return False
+    if avg_logprob is not None and avg_logprob < SEG_MIN_AVG_LOGPROB:
+        return False
+    if compression_ratio is not None and compression_ratio > SEG_MAX_COMPRESSION_RATIO:
+        return False
+    return True
+
+
+def _segment_is_confident(segment) -> bool:
+    """False when decoder metadata marks the segment as likely hallucination.
+
+    Segments missing these attributes (test doubles, API responses without
+    metadata) pass through.
+    """
+    return _fields_are_confident(
+        getattr(segment, "no_speech_prob", None),
+        getattr(segment, "avg_logprob", None),
+        getattr(segment, "compression_ratio", None),
+    )
+
+
+def _seg_field(segment, name):
+    """Read a field from a segment whether it is a dict or an attribute object."""
+    if isinstance(segment, dict):
+        return segment.get(name)
+    return getattr(segment, name, None)
 
 
 def _prompt_echo_config(initial_prompt: str | None) -> Tuple[List[str], int]:
@@ -256,7 +399,7 @@ def apply_hallucination_filter(text: str, initial_prompt: str | None = None) -> 
         if _is_prompt_fragment([w for w, _ in _normalize_words(text)], prompt_words):
             return ""
 
-    return _apply_text_junk_filter(text)
+    return _apply_text_junk_filter(text, _hotword_vocabulary())
 
 
 def process_whisper_segments(segments, initial_prompt: str | None = None) -> str:
@@ -275,6 +418,15 @@ def process_whisper_segments(segments, initial_prompt: str | None = None) -> str
     prompt_words, strong_echo_words = _prompt_echo_config(initial_prompt)
     kept: List[str] = []
     for segment in segment_list:
+        if not _segment_is_confident(segment):
+            logger.debug(
+                "Dropped low-confidence segment "
+                f"(no_speech={getattr(segment, 'no_speech_prob', None)}, "
+                f"avg_logprob={getattr(segment, 'avg_logprob', None)}, "
+                f"compression={getattr(segment, 'compression_ratio', None)}): "
+                f"{(segment.text or '')[:60]!r}"
+            )
+            continue
         segment_text = segment.text or ""
         if prompt_words:
             remainder, echo_words = _strip_leading_prompt_echo(
@@ -306,6 +458,9 @@ class TranscriptionResult:
     fallback_used: bool
     error_message: Optional[str] = None
     timestamp: datetime = None
+    # Optional structured output: [{start, end, text, words: [{start, end, word}]}]
+    # used by client-side speaker splitting on the OTHERS channel.
+    segments: Optional[List[Dict[str, Any]]] = None
     
     def __post_init__(self):
         if self.timestamp is None:
@@ -505,17 +660,27 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
             )
 
         try:
-            from config import LANGUAGE, BEAM_SIZE, WHISPER_HOTWORDS, WHISPER_INITIAL_PROMPT
+            from config import (
+                LANGUAGE, BEAM_SIZE, WHISPER_HOTWORDS, WHISPER_INITIAL_PROMPT,
+                WHISPER_VAD_ENABLED, WHISPER_VAD_PARAMETERS,
+                WHISPER_CONDITION_ON_PREV_TEXT, WHISPER_REPETITION_PENALTY,
+                WHISPER_NO_REPEAT_NGRAM_SIZE, WHISPER_WORD_TIMESTAMPS,
+                SPEAKER_SPLIT_ENABLED,
+            )
 
             audio_data = audio_segment.get_wav_bytes()
             if not audio_data:
                 raise TranscriptionError("Could not get WAV data from audio segment", self.get_name())
 
+            # Speaker splitting needs word timings even if not explicitly requested.
+            word_timestamps = WHISPER_WORD_TIMESTAMPS or SPEAKER_SPLIT_ENABLED
+
             hotwords_str = " ".join(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else None
             initial_prompt = WHISPER_INITIAL_PROMPT if WHISPER_INITIAL_PROMPT else None
             self.logger.debug(
                 f"Transcribing with hotwords={'%d words' % len(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else 'disabled'}, "
-                f"initial_prompt={'set' if initial_prompt else 'disabled'}"
+                f"initial_prompt={'set' if initial_prompt else 'disabled'}, "
+                f"vad={'on' if WHISPER_VAD_ENABLED else 'off'}"
             )
 
             with io.BytesIO(audio_data) as audio_io:
@@ -523,13 +688,36 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                     audio_io,
                     language=LANGUAGE,
                     beam_size=BEAM_SIZE,
-                    word_timestamps=False,
+                    word_timestamps=word_timestamps,
                     hotwords=hotwords_str,
                     initial_prompt=initial_prompt,
+                    vad_filter=WHISPER_VAD_ENABLED,
+                    vad_parameters=WHISPER_VAD_PARAMETERS if WHISPER_VAD_ENABLED else None,
+                    condition_on_previous_text=WHISPER_CONDITION_ON_PREV_TEXT,
+                    repetition_penalty=WHISPER_REPETITION_PENALTY,
+                    no_repeat_ngram_size=WHISPER_NO_REPEAT_NGRAM_SIZE,
                 )
-                result_text = process_whisper_segments(segments, initial_prompt)
+                segment_list = list(segments)
+                result_text = process_whisper_segments(segment_list, initial_prompt)
                 if not result_text:
                     self.logger.info("Filtered out likely hallucination from local GPU transcription")
+
+            response_segments = [
+                {
+                    "start": seg.start,
+                    "end": seg.end,
+                    "text": seg.text,
+                    "words": (
+                        [
+                            {"start": w.start, "end": w.end, "word": w.word}
+                            for w in (seg.words or [])
+                        ]
+                        if word_timestamps
+                        else []
+                    ),
+                }
+                for seg in segment_list
+            ]
 
             processing_time = time.time() - start_time
             self._record_success()
@@ -539,6 +727,7 @@ class LocalGPUTranscriptionStrategy(TranscriptionStrategy):
                 method_used="local_gpu",
                 processing_time=processing_time,
                 fallback_used=False,
+                segments=response_segments,
             )
 
         except Exception as e:
@@ -647,8 +836,8 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
                 # Create transcription request with timeout handling
                 transcription = self._make_api_request(audio_data, GROQ_MODEL)
                 
-                # Extract and process text
-                result_text = self._process_transcription_response(transcription)
+                # Extract and process text + structured segments
+                result_text, response_segments = self._process_transcription_response(transcription)
                 
                 processing_time = time_module.time() - start_time
                 self._record_success()
@@ -659,7 +848,8 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
                     text=result_text,
                     method_used="groq_api",
                     processing_time=processing_time,
-                    fallback_used=False
+                    fallback_used=False,
+                    segments=response_segments,
                 )
                 
             except Exception as e:
@@ -694,44 +884,86 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
     
     def _make_api_request(self, audio_data: bytes, model: str):
         """Make API request with timeout handling"""
-        from config import API_REQUEST_TIMEOUT
+        from config import (
+            API_REQUEST_TIMEOUT, WHISPER_WORD_TIMESTAMPS, SPEAKER_SPLIT_ENABLED,
+        )
         import signal
-        
+
+        # Speaker splitting needs word timings even if not explicitly requested.
+        granularities = ["segment"]
+        if WHISPER_WORD_TIMESTAMPS or SPEAKER_SPLIT_ENABLED:
+            granularities.append("word")
+
+        def create():
+            return self._client.audio.transcriptions.create(
+                file=("audio.wav", audio_data),
+                model=model,
+                response_format="verbose_json",
+                language="en",
+                timestamp_granularities=granularities,
+            )
+
         def timeout_handler(signum, frame):
             raise TimeoutError(f"API request timed out after {API_REQUEST_TIMEOUT}s")
-        
+
         # Set up timeout (Unix-like systems)
         try:
             old_handler = signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(int(API_REQUEST_TIMEOUT))
-            
+
             try:
-                transcription = self._client.audio.transcriptions.create(
-                    file=("audio.wav", audio_data),
-                    model=model,
-                    response_format="verbose_json",
-                    language="en"
-                )
-                return transcription
+                return create()
             finally:
                 signal.alarm(0)  # Cancel the alarm
                 signal.signal(signal.SIGALRM, old_handler)
-                
+
         except (AttributeError, OSError):
             # Windows or signal not available, use basic request without timeout signal
             # The Groq client should have its own timeout handling
-            transcription = self._client.audio.transcriptions.create(
-                file=("audio.wav", audio_data),
-                model=model,
-                response_format="verbose_json",
-                language="en"
+            return create()
+
+    def _process_transcription_response(self, transcription) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
+        """Process and filter transcription response.
+
+        Returns (filtered_text, structured_segments).  Per-segment confidence
+        metadata (avg_logprob / compression_ratio / no_speech_prob) is applied
+        before joining so junk decodes never reach the text-level filter.
+        """
+        api_segments = getattr(transcription, "segments", None) or []
+        api_words = getattr(transcription, "words", None) or []
+
+        kept_texts: List[str] = []
+        response_segments: List[Dict[str, Any]] = []
+        for seg in api_segments:
+            if not _fields_are_confident(
+                _seg_field(seg, "no_speech_prob"),
+                _seg_field(seg, "avg_logprob"),
+                _seg_field(seg, "compression_ratio"),
+            ):
+                self.logger.debug(
+                    "Dropped low-confidence Groq segment: "
+                    f"{(_seg_field(seg, 'text') or '')[:60]!r}"
+                )
+                continue
+            kept_texts.append(_seg_field(seg, "text") or "")
+            response_segments.append(
+                {
+                    "start": _seg_field(seg, "start"),
+                    "end": _seg_field(seg, "end"),
+                    "text": _seg_field(seg, "text") or "",
+                    "words": self._words_in_range(
+                        api_words,
+                        _seg_field(seg, "start"),
+                        _seg_field(seg, "end"),
+                    ),
+                }
             )
-            return transcription
-    
-    def _process_transcription_response(self, transcription) -> str:
-        """Process and filter transcription response"""
-        result_text = transcription.text.strip() if transcription.text else ""
-        
+
+        if api_segments:
+            result_text = " ".join(t for t in kept_texts if t).strip()
+        else:
+            result_text = transcription.text.strip() if transcription.text else ""
+
         if result_text:
             # Replace multiple consecutive spaces with a single space
             result_text = re.sub(r' {2,}', ' ', result_text)
@@ -739,9 +971,29 @@ class GroqAPITranscriptionStrategy(TranscriptionStrategy):
             filtered = apply_hallucination_filter(result_text, WHISPER_INITIAL_PROMPT)
             if not filtered:
                 self.logger.info(f"Filtered out likely hallucination: {result_text}")
+                # Everything filtered — drop the structured segments too.
+                response_segments = []
             result_text = filtered
-        
-        return result_text
+
+        return result_text, response_segments or None
+
+    @staticmethod
+    def _words_in_range(words, start, end) -> List[Dict[str, Any]]:
+        """Group top-level word timestamps into the segment that contains them."""
+        grouped = []
+        for w in words:
+            w_start = _seg_field(w, "start")
+            if w_start is None or start is None or end is None:
+                continue
+            if start <= w_start <= end:
+                grouped.append(
+                    {
+                        "start": w_start,
+                        "end": _seg_field(w, "end"),
+                        "word": _seg_field(w, "word") or "",
+                    }
+                )
+        return grouped
     
     def _categorize_error(self, error: Exception) -> str:
         """Categorize API errors for appropriate handling"""
@@ -849,14 +1101,22 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
         start_time = time.time()
 
         try:
+            from config import WHISPER_WORD_TIMESTAMPS, SPEAKER_SPLIT_ENABLED
+
             wav_bytes = audio_segment.get_wav_bytes()
 
             headers = {"Content-Type": "application/octet-stream"}
             if NETWORK_GPU_API_KEY:
                 headers["Authorization"] = f"Bearer {NETWORK_GPU_API_KEY}"
 
+            # Ask the server for word timings when this client splits speakers —
+            # works regardless of the server's own config.
+            url = f"{server_url}/transcribe"
+            if WHISPER_WORD_TIMESTAMPS or SPEAKER_SPLIT_ENABLED:
+                url += "?word_timestamps=true"
+
             response = requests.post(
-                f"{server_url}/transcribe",
+                url,
                 data=wav_bytes,
                 headers=headers,
                 timeout=NETWORK_GPU_TIMEOUT
@@ -871,7 +1131,8 @@ class NetworkGPUTranscriptionStrategy(TranscriptionStrategy):
                     text=data.get("text", ""),
                     method_used="network_gpu",
                     processing_time=processing_time,
-                    fallback_used=False
+                    fallback_used=False,
+                    segments=data.get("segments"),
                 )
             else:
                 error_message = f"HTTP {response.status_code}: {response.text}"

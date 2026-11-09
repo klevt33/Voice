@@ -503,7 +503,30 @@ def transcription_thread(audio_queue: queue.Queue,
                 
             # Process the audio segment
             source_prefix = f"[{audio_segment.source}]"
-            
+
+            # Client-side VAD gate: skip clips with no real speech before any
+            # backend is invoked (protects all strategies incl. Groq).
+            try:
+                from config import (
+                    SPEECH_GATE_ENABLED, SPEECH_GATE_MIN_SPEECH_S,
+                    SPEECH_GATE_VAD_THRESHOLD,
+                )
+                from speech_gate import speech_gate_available, contains_speech
+
+                if SPEECH_GATE_ENABLED and speech_gate_available():
+                    has_speech = contains_speech(
+                        audio_segment.get_wav_bytes(),
+                        SPEECH_GATE_MIN_SPEECH_S,
+                        SPEECH_GATE_VAD_THRESHOLD,
+                    )
+                    if has_speech is False:
+                        logger.info(f"{source_prefix} Speech gate: no speech detected — skipping transcription")
+                        stats["empty_segments"] += 1
+                        audio_queue.task_done()
+                        continue
+            except Exception as e:
+                logger.warning(f"Speech gate error ({e}) — proceeding with transcription")
+
             try:
                 # Transcribe using the manager (with automatic fallback)
                 result = manager.transcribe_with_fallback(audio_segment)
@@ -540,12 +563,14 @@ def transcription_thread(audio_queue: queue.Queue,
                     logger.debug(f"{source_prefix} No speech detected.")
                     stats["empty_segments"] += 1
                 else:
-                    # Create a Topic object and queue it for the main app to route
-                    topic = Topic(text=result.text, timestamp=datetime.now(), source=audio_segment.source)
-                    transcribed_topics_queue.put(topic)
-                    
+                    # Create Topic objects (splitting OTHERS audio by speaker
+                    # when enabled) and queue them for the main app to route
+                    topics = _topics_for_result(result, audio_segment)
+                    for topic in topics:
+                        transcribed_topics_queue.put(topic)
+
                     fallback_info = " (fallback)" if result.fallback_used else ""
-                    logger.info(f"TRANSCRIBED ({result.method_used}{fallback_info}): [{topic.source}] {result.text[:50]}...")
+                    logger.info(f"TRANSCRIBED ({result.method_used}{fallback_info}): [{audio_segment.source}] {result.text[:50]}...")
                     
                     # Clear any active transcription exceptions on successful transcription
                     if exception_notifier:
@@ -612,6 +637,72 @@ def transcription_thread(audio_queue: queue.Queue,
         logger.warning(f"Error during transcription manager cleanup: {e}")
     
     logger.info("Transcription thread shutting down.")
+
+def _topics_for_result(result, audio_segment) -> list:
+    """Build the Topic objects for a transcription result.
+
+    When speaker splitting is enabled and the OTHERS segment contains 2+
+    speakers, the text is divided at speaker turns into separate topics —
+    speaker labels are only used to find the boundaries, never emitted.
+    Otherwise a single topic wraps the full text.
+    """
+    from config import (
+        SPEAKER_SPLIT_ENABLED, DIARIZATION_MIN_TURN_S, DIARIZATION_MIN_SEGMENT_S,
+        DIARIZATION_BOUNDARY_SHIFT_S, DIARIZATION_BOUNDARY_SNAP_S,
+        WHISPER_INITIAL_PROMPT,
+    )
+
+    default = [Topic(text=result.text, timestamp=datetime.now(), source=audio_segment.source)]
+
+    if audio_segment.source != "OTHERS" or not SPEAKER_SPLIT_ENABLED or not result.segments:
+        return default
+    try:
+        from speaker_diarization import diarization_available, diarize
+        from speaker_split import split_text_by_speaker
+        from transcription_strategies import apply_hallucination_filter
+
+        if not diarization_available():
+            return default
+        if audio_segment.get_duration_seconds() < DIARIZATION_MIN_SEGMENT_S:
+            return default
+
+        turns = diarize(audio_segment.get_wav_bytes())
+        if not turns:
+            return default
+
+        blocks = split_text_by_speaker(
+            result.segments, turns, DIARIZATION_MIN_TURN_S,
+            DIARIZATION_BOUNDARY_SHIFT_S, DIARIZATION_BOUNDARY_SNAP_S,
+        )
+        if len(blocks) <= 1:
+            return default
+
+        # Re-run the junk filter per block — a speaker boundary may isolate a
+        # fragment that was innocuous inside the full text.
+        topics = []
+        try:
+            base_ts = datetime.strptime(audio_segment.timestamp, "%Y%m%d_%H%M%S")
+        except (ValueError, TypeError):
+            base_ts = datetime.now()
+        from datetime import timedelta
+        for block in blocks:
+            text = apply_hallucination_filter(block["text"], WHISPER_INITIAL_PROMPT)
+            if not text:
+                continue
+            topics.append(
+                Topic(
+                    text=text,
+                    timestamp=base_ts + timedelta(seconds=block["start"] or 0),
+                    source=audio_segment.source,
+                )
+            )
+        if len(topics) > 1:
+            logger.info(f"OTHERS segment split into {len(topics)} speaker blocks")
+            return topics
+        return default if not topics else topics
+    except Exception as e:
+        logger.warning(f"Speaker splitting failed ({e}) — using unsplit topic")
+        return default
 
 def _handle_transcription_error(exception_notifier, error_message: str, method_used: str):
     """Handle transcription errors and notify appropriately"""

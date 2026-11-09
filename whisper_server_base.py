@@ -66,20 +66,40 @@ def check_bearer_auth(request, api_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def run_transcription(model, audio_bytes: bytes) -> dict:
+def run_transcription(model, audio_bytes: bytes, word_timestamps=None) -> dict:
     """Run faster-whisper on raw WAV bytes synchronously.
 
     Intended to be called from a ThreadPoolExecutor so the asyncio event loop
-    is not blocked.  Returns a dict with "text" and "processing_time" keys.
+    is not blocked.  Returns a dict with "text", "processing_time" and
+    "segments" keys.  "segments" carries per-utterance timing and, when word
+    timestamps are enabled, per-word timing used by client-side speaker
+    splitting.
+
+    word_timestamps=None resolves to config (WHISPER_WORD_TIMESTAMPS or
+    SPEAKER_SPLIT_ENABLED); callers may pass True/False to override — the
+    /transcribe endpoint maps the ?word_timestamps= query param onto it so a
+    client that splits speakers can request timings regardless of server
+    config.
     """
-    from config import LANGUAGE, BEAM_SIZE, WHISPER_HOTWORDS, WHISPER_INITIAL_PROMPT
+    from config import (
+        LANGUAGE, BEAM_SIZE, WHISPER_HOTWORDS, WHISPER_INITIAL_PROMPT,
+        WHISPER_VAD_ENABLED, WHISPER_VAD_PARAMETERS,
+        WHISPER_CONDITION_ON_PREV_TEXT, WHISPER_REPETITION_PENALTY,
+        WHISPER_NO_REPEAT_NGRAM_SIZE, WHISPER_WORD_TIMESTAMPS,
+        SPEAKER_SPLIT_ENABLED,
+    )
     from transcription_strategies import process_whisper_segments
+
+    # Speaker splitting needs word timings even if not explicitly requested.
+    if word_timestamps is None:
+        word_timestamps = WHISPER_WORD_TIMESTAMPS or SPEAKER_SPLIT_ENABLED
 
     hotwords_str = " ".join(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else None
     initial_prompt = WHISPER_INITIAL_PROMPT if WHISPER_INITIAL_PROMPT else None
     logger.debug(
         f"Transcribing with hotwords={'%d words' % len(WHISPER_HOTWORDS) if WHISPER_HOTWORDS else 'disabled'}, "
-        f"initial_prompt={'set' if initial_prompt else 'disabled'}"
+        f"initial_prompt={'set' if initial_prompt else 'disabled'}, "
+        f"vad={'on' if WHISPER_VAD_ENABLED else 'off'}"
     )
 
     start_time = time.time()
@@ -88,15 +108,42 @@ def run_transcription(model, audio_bytes: bytes) -> dict:
             audio_io,
             language=LANGUAGE,
             beam_size=BEAM_SIZE,
-            word_timestamps=False,
+            word_timestamps=word_timestamps,
             hotwords=hotwords_str,
             initial_prompt=initial_prompt,
+            vad_filter=WHISPER_VAD_ENABLED,
+            vad_parameters=WHISPER_VAD_PARAMETERS if WHISPER_VAD_ENABLED else None,
+            condition_on_previous_text=WHISPER_CONDITION_ON_PREV_TEXT,
+            repetition_penalty=WHISPER_REPETITION_PENALTY,
+            no_repeat_ngram_size=WHISPER_NO_REPEAT_NGRAM_SIZE,
         )
-        result_text = process_whisper_segments(segments, initial_prompt)
+        segment_list = list(segments)
+        result_text = process_whisper_segments(segment_list, initial_prompt)
+
+    response_segments = [
+        {
+            "start": seg.start,
+            "end": seg.end,
+            "text": seg.text,
+            "words": (
+                [
+                    {"start": w.start, "end": w.end, "word": w.word}
+                    for w in (seg.words or [])
+                ]
+                if word_timestamps
+                else []
+            ),
+        }
+        for seg in segment_list
+    ]
 
     processing_time = time.time() - start_time
     logger.info(
         f"Transcription complete: {processing_time:.3f}s, "
         f"result length={len(result_text)} chars"
     )
-    return {"text": result_text, "processing_time": processing_time}
+    return {
+        "text": result_text,
+        "processing_time": processing_time,
+        "segments": response_segments,
+    }

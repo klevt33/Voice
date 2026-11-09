@@ -25,6 +25,13 @@ uvicorn[standard]
 # FOR NETWORK GPU CLIENT (required when NETWORK_GPU_ENABLED=True):
 requests
 
+# FOR SPEAKER SEPARATION (optional - required when SPEAKER_SPLIT_ENABLED=True):
+# Install MANUALLY — do not add to this file. Must pin 3.3.2: pyannote 4.x
+# requires torch>=2.8 and would clobber the pinned CUDA torch build:
+# pip install "pyannote.audio==3.3.2" "speechbrain==1.0.3" "pytorch-metric-learning<3" "huggingface-hub==0.36.2" torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121 --extra-index-url https://pypi.org/simple
+# (huggingface-hub must stay <1.0 — pyannote 3.x passes use_auth_token, removed in 1.x)
+# Also requires HF_TOKEN env var + accepted gated-model licenses (see SETUP_GUIDE.md).
+
 # REQUIRED DEPENDENCIES:
 
 # Audio processing
