@@ -1,4 +1,5 @@
 # config.py
+import importlib.util
 import os
 import pyaudio
 
@@ -206,19 +207,11 @@ def is_groq_api_available():
 
 def is_pytorch_available():
     """Check if PyTorch is available"""
-    try:
-        import torch
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("torch") is not None
 
 def is_faster_whisper_available():
     """Check if faster-whisper is available"""
-    try:
-        from faster_whisper import WhisperModel
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("faster_whisper") is not None
 
 def should_load_local_model():
     """Determine if local model should be loaded based on configuration and availability"""
